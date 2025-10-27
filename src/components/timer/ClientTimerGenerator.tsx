@@ -76,6 +76,9 @@ export function ClientTimerGenerator() {
         if (fileSizeMB > 50) {
           alert(`⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
         }
+
+        setIsGenerating(false);
+        setProgress(0);
       };
 
       // Start recording
@@ -134,7 +137,6 @@ export function ClientTimerGenerator() {
     } catch (error) {
       console.error("Error generating timer sticker:", error);
       alert(`Failed to generate timer sticker: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
       setIsGenerating(false);
       setProgress(0);
     }
@@ -210,7 +212,7 @@ export function ClientTimerGenerator() {
           {isGenerating ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating Timer Sticker...
+              Generating... {progress}%
             </>
           ) : (
             "Generate Timer Sticker"
@@ -220,10 +222,6 @@ export function ClientTimerGenerator() {
         {/* Loading Progress */}
         {isGenerating && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Generating timer...</span>
-              <span>{progress}%</span>
-            </div>
             <Progress value={progress} className="w-full" />
           </div>
         )}
