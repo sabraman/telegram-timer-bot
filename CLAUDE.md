@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a **Telegram Mini App** built with **Next.js** that integrates with the **Telegram Bot API** using **GrammyJS**. It includes a real-time timer functionality and demonstrates modern web development patterns for Telegram integration.
+This is a **Telegram Mini App** built with **Next.js** that integrates with the **Telegram Bot API** using **GrammyJS**. It features a **client-side timer generator** that creates animated countdown stickers with transparency support, demonstrating modern web development patterns for Telegram integration.
 
 ## Architecture
 
@@ -24,17 +24,24 @@ This is a **Telegram Mini App** built with **Next.js** that integrates with the 
 src/
 ├── app/                          # Next.js App Router
 │   ├── api/bot/                 # Telegram webhook endpoint
+│   ├── api/send-to-telegram/    # Timer sticker upload endpoint
 │   ├── demo/                    # Demo page with Convex integration
 │   ├── settings/               # Settings page components
+│   ├── page.tsx                # Main timer generator page
 │   └── actions.ts              # Server actions (authentication)
 ├── components/                  # React components
 │   ├── common/                 # Shared components (auth, theme, etc.)
-│   └── ui/                     # Shadcn UI components
+│   ├── timer/                  # Timer generator components
+│   │   ├── ClientTimerGenerator.tsx  # Main client-side timer generator
+│   │   └── TimerGenerator.tsx        # Server-side timer generator (legacy)
+│   └── ui/                     # Shadcn UI components (Button, Input, Card, Progress)
 ├── hooks/                      # Custom React hooks (Telegram integrations)
 ├── lib/                        # Utility libraries
 │   ├── bot/                    # Telegram bot logic
 │   ├── security.ts             # Authentication utilities
 │   └── env.ts                  # Environment variable validation
+├── remotion/                   # Remotion video components (legacy)
+│   └── TimerVideo.tsx          # Timer video composition
 └── styles/                     # Global CSS
 ```
 
@@ -126,20 +133,48 @@ Currently implemented:
 
 ## Timer Functionality
 
-The timer functionality is not yet implemented but the architecture supports it through:
+### Implemented Features
+The project includes a fully functional **client-side timer generator** that creates animated countdown stickers:
 
-### Current Infrastructure
-- **Real-time Database**: Convex for timer state storage
-- **Telegram UI Components**: Custom hooks for button interactions
-- **API Routes**: Backend endpoints for timer operations
-- **Server Actions**: State management via server components
+#### Core Timer Features
+- **Customizable Duration**: User can input any timer duration from 1-60 seconds
+- **Client-Side Generation**: Uses MediaRecorder API for browser-based video creation
+- **Transparent Background**: Full alpha channel support for proper sticker appearance
+- **Real-Time Progress**: Live progress bar and percentage display during generation
+- **Telegram Integration**: Direct upload as animated sticker using `sendSticker` API
 
-### Timer Implementation Plan
-1. Add timer schema to `convex/schema.ts`
-2. Create timer mutations/queries in Convex
-3. Build timer UI components
-4. Add timer commands to bot (start/stop/status)
-5. Integrate with Telegram buttons and mini app interface
+#### Technical Implementation
+- **Canvas API**: Renders timer frames with 512x512 resolution and white text
+- **MediaRecorder API**: Captures canvas as WebM video with VP9 codec
+- **Frame Rate**: Optimized at 1fps (numbers change once per second)
+- **File Format**: WebM with transparency support, optimized for Telegram's 50MB limit
+- **UI Components**: Progress bar, loading states, and video preview
+
+#### User Experience
+1. User inputs desired timer duration (seconds)
+2. Clicks "Generate Timer Sticker" button
+3. Button shows real-time progress: "Generating... X%" and becomes disabled
+4. Clean progress bar displays generation status
+5. Video preview appears upon completion
+6. "Send to Telegram" button uploads sticker directly to user's chat
+
+### File Structure
+```
+src/components/timer/
+├── ClientTimerGenerator.tsx     # Main client-side timer generator (ACTIVE)
+├── TimerGenerator.tsx          # Server-side generator (legacy)
+└── TimerVideo.tsx              # Remotion video composition (legacy)
+
+src/app/api/
+└── send-to-telegram/
+    └── route.ts                # Telegram sticker upload endpoint
+```
+
+### API Integration
+- **Endpoint**: `/api/send-to-telegram`
+- **Method**: POST with base64 video data
+- **Telegram API**: Uses `sendSticker` with `InputFile` pattern
+- **File Handling**: Converts base64 to Buffer for GrammyJS upload
 
 ## Database Schema
 
@@ -257,3 +292,28 @@ pnpm convex:deploy
 - Test both webhook and polling modes
 - Use Convex dashboard for real-time database monitoring
 - Enable debug mode in `ClientRoot` for development insights
+
+## Timer Development Notes
+
+### Browser Compatibility
+- **MediaRecorder API**: Required for client-side video generation
+- **Canvas API**: Used for frame rendering with transparency
+- **WebM Support**: Modern browsers support VP9 with alpha channel
+- **File Size**: Monitor generated file sizes to stay under Telegram's 50MB limit
+
+### Common Issues
+- **Progress Not Showing**: Ensure `setIsGenerating(false)` is called in `mediaRecorder.onstop`, not in `finally`
+- **Transparency**: Use `ctx.clearRect()` for proper alpha channel, don't fill with background color
+- **Telegram Upload**: Use `InputFile` pattern with Buffer, not base64 string directly
+- **Frame Rate**: 1fps is optimal for countdown timers (numbers change once per second)
+
+### Testing
+- Test timer generation in target browsers (Chrome, Firefox, Safari)
+- Verify sticker uploads work in Telegram desktop and mobile apps
+- Check file sizes for different timer durations
+- Test edge cases (1 second, 60 second timers)
+
+### Performance
+- Canvas operations are synchronous, progress updates happen during frame generation
+- MediaRecorder processes asynchronously, completion handled in `onstop` callback
+- Large timers (60+ seconds) may take longer to generate due to more frames
