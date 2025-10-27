@@ -1,6 +1,8 @@
 import { Cherry } from "lucide-react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
+import { TimerGenerator } from "~/components/timer/TimerGenerator";
+import { ClientTimerGenerator } from "~/components/timer/ClientTimerGenerator";
 import { getAuth } from "~/lib/security";
 
 export default async function HomePage() {
@@ -17,14 +19,24 @@ export default async function HomePage() {
         </span>
       </h1>
 
-      <p className="text-muted-foreground w-full">
-        This is a server-side rendered page. This page does not trigger any
-        telegram specific functionalities.
+      <p className="text-muted-foreground w-full text-center">
+        Create custom 60-second timer videos and share them on Telegram!
       </p>
+
+      <div className="w-full max-w-lg space-y-6">
+        <ClientTimerGenerator />
+
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground mb-4">
+            Or use the server-side version (requires additional setup):
+          </p>
+          <TimerGenerator />
+        </div>
+      </div>
 
       <div className="flex items-center gap-3">
         <Link href="/demo">
-          <Button className="gap-2">
+          <Button className="gap-2" variant="outline">
             <Cherry className="size-4" /> Demo
           </Button>
         </Link>
