@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "~/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
-import { Label } from "~/components/ui/label";
+import { Input } from "~/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Loader2, Download, Send } from "lucide-react";
-import { Player } from "@remotion/player";
-import { TimerVideo } from "~/remotion/TimerVideo";
+import { Progress } from "~/components/ui/progress";
+import { Loader2, Send } from "lucide-react";
 
-type TimerStyle = "countdown" | "circular" | "progress";
+type TimerStyle = "countdown";
 
 export function ClientTimerGenerator() {
-  const [selectedStyle, setSelectedStyle] = useState<TimerStyle>("countdown");
+  const [timerSeconds, setTimerSeconds] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
 
   const generateTimerClientSide = async () => {
     setIsGenerating(true);
+    setProgress(0);
+
     setVideoBlob(null);
     if (videoUrl) {
       URL.revokeObjectURL(videoUrl);
@@ -39,8 +40,8 @@ export function ClientTimerGenerator() {
         throw new Error('Could not get canvas context');
       }
 
-      const fps = 10;
-      const duration = 5;
+      const fps = 1; // Only need 1fps since numbers change once per second
+      const duration = timerSeconds + 1; // +1 to include the "0" at the end
       const frameDuration = 1000 / fps; // milliseconds per frame
 
       // Create MediaRecorder to capture canvas as WebM
@@ -91,7 +92,7 @@ export function ClientTimerGenerator() {
         }
 
         const currentSecond = Math.floor(frame / fps);
-        const remainingSeconds = Math.max(0, 5 - currentSecond);
+        const remainingSeconds = Math.max(0, timerSeconds - currentSecond);
 
         // Clear canvas with transparency
         ctx.clearRect(0, 0, 512, 512);
@@ -108,12 +109,8 @@ export function ClientTimerGenerator() {
 
         // Draw main timer number
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 220px Arial';
-        ctx.fillText(remainingSeconds.toString(), 256, 240);
-
-        // Draw smaller text below
-        ctx.font = 'bold 32px Arial';
-        ctx.fillText(`${remainingSeconds === 1 ? 'second' : 'seconds'} left`, 256, 320);
+        ctx.font = 'bold 512px Arial';
+        ctx.fillText(remainingSeconds.toString(), 256, 256);
 
         // Reset shadow
         ctx.shadowColor = 'transparent';
@@ -123,10 +120,9 @@ export function ClientTimerGenerator() {
 
         frame++;
 
-        // Show progress
-        if (frame % 5 === 0) {
-          console.log(`Generated frame ${frame}/${totalFrames} (${Math.round((frame / totalFrames) * 100)}%)`);
-        }
+        // Update progress
+        const progressPercent = Math.round((frame / totalFrames) * 100);
+        setProgress(progressPercent);
 
         // Schedule next frame
         setTimeout(animateFrame, frameDuration);
@@ -137,23 +133,10 @@ export function ClientTimerGenerator() {
 
     } catch (error) {
       console.error("Error generating timer sticker:", error);
-      alert(`Failed to generate timer sticker: ${error.message}`);
+      alert(`Failed to generate timer sticker: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  
-  const downloadVideo = () => {
-    if (videoBlob) {
-      const url = URL.createObjectURL(videoBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `timer-${selectedStyle}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setProgress(0);
     }
   };
 
@@ -174,8 +157,8 @@ export function ClientTimerGenerator() {
           },
           body: JSON.stringify({
             video: base64data,
-            filename: `timer-${selectedStyle}.webm`,
-            caption: `🕐 ${selectedStyle} style timer sticker - 5 seconds`,
+            filename: "timer-countdown.webm",
+            caption: `🕐 ${timerSeconds}→0 countdown timer sticker - ${timerSeconds + 1} seconds`,
           }),
         });
 
@@ -198,36 +181,24 @@ export function ClientTimerGenerator() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Generate Timer Sticker (Telegram)</CardTitle>
+        <CardTitle>Generate Timer Sticker</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Timer Style Selection */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Choose Timer Style</Label>
-          <RadioGroup
-            value={selectedStyle}
-            onValueChange={(value) => setSelectedStyle(value as TimerStyle)}
-            className="space-y-2"
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="countdown" id="countdown" />
-              <Label htmlFor="countdown" className="text-sm">
-                Simple Countdown (60, 59, 58...)
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="circular" id="circular" />
-              <Label htmlFor="circular" className="text-sm">
-                Circular Progress
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="progress" id="progress" />
-              <Label htmlFor="progress" className="text-sm">
-                Progress Bar
-              </Label>
-            </div>
-          </RadioGroup>
+        {/* Timer Duration Input */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Timer Duration (seconds)</label>
+          <Input
+            type="number"
+            min="1"
+            max="60"
+            value={timerSeconds}
+            onChange={(e) => setTimerSeconds(Math.max(1, Math.min(60, parseInt(e.target.value) || 1)))}
+            placeholder="Enter seconds (1-60)"
+            className="w-full"
+          />
+          <p className="text-xs text-muted-foreground">
+            Timer will count down from {timerSeconds} to 0 ({timerSeconds + 1} seconds total)
+          </p>
         </div>
 
         {/* Generate Button */}
@@ -242,29 +213,20 @@ export function ClientTimerGenerator() {
               Generating Timer Sticker...
             </>
           ) : (
-            "Generate 5-Second Timer Sticker"
+            "Generate Timer Sticker"
           )}
         </Button>
 
-        {/* Real-time Preview */}
-        <div className="space-y-3">
-          <div className="border rounded-lg overflow-hidden">
-            <Player
-              component={TimerVideo}
-              compositionWidth={512}
-              compositionHeight={512}
-              fps={30}
-              durationInFrames={60 * 30}
-              loop
-              autoPlay
-              style={{ width: '100%', height: 'auto' }}
-              inputProps={{ style: selectedStyle }}
-            />
+        {/* Loading Progress */}
+        {isGenerating && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Generating timer...</span>
+              <span>{progress}%</span>
+            </div>
+            <Progress value={progress} className="w-full" />
           </div>
-          <p className="text-xs text-muted-foreground text-center">
-            Live preview - {selectedStyle} style timer
-          </p>
-        </div>
+        )}
 
         {/* Video Preview */}
         {videoUrl && (
@@ -282,42 +244,23 @@ export function ClientTimerGenerator() {
               </video>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button onClick={downloadVideo} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download WebM
-              </Button>
-              <Button
-                onClick={sendToTelegram}
-                disabled={isSendingToTelegram}
-              >
-                {isSendingToTelegram ? (
+            <Button
+              onClick={sendToTelegram}
+              disabled={isSendingToTelegram}
+              className="w-full"
+            >
+              {isSendingToTelegram ? (
+                <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
+                  Sending to Telegram...
+                </>
+              ) : (
+                <>
                   <Send className="mr-2 h-4 w-4" />
-                )}
-                Send to Telegram
-              </Button>
-            </div>
-
-            {videoBlob && (
-              <div className="text-xs text-muted-foreground text-center space-y-1">
-                <div className="flex items-center justify-center gap-2">
-                  File size: {(videoBlob.size / 1024 / 1024).toFixed(2)} MB
-                  {videoBlob.size > 50 * 1024 * 1024 && (
-                    <span className="text-red-500 font-medium">⚠️ Too large</span>
-                  )}
-                  {videoBlob.size <= 50 * 1024 * 1024 && videoBlob.size > 20 * 1024 * 1024 && (
-                    <span className="text-yellow-500 font-medium">⚠️ Large</span>
-                  )}
-                  {videoBlob.size <= 20 * 1024 * 1024 && (
-                    <span className="text-green-500 font-medium">✅ Ready</span>
-                  )}
-                </div>
-                <div>Format: WebM Sticker (VP9) • 512x512 • 5 seconds • 10fps • Transparent</div>
-                <div className="text-gray-500">Telegram limit: 50MB • Auto-compression if oversized</div>
-              </div>
-            )}
+                  Send to Telegram
+                </>
+              )}
+            </Button>
           </div>
         )}
       </CardContent>
