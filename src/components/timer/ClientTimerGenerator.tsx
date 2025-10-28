@@ -4,9 +4,15 @@ import { useState, useEffect } from "react";
 import { Button } from "~/components/ui/button";
 import { Progress } from "~/components/ui/progress";
 import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, RotateCcw, Check } from "lucide-react";
 import { CanvasSource, Output, WebMOutputFormat, BufferTarget } from "mediabunny";
 import type { WheelPickerOption } from "~/components/ui/wheel-picker";
+import {
+  SlideToUnlock,
+  SlideToUnlockHandle,
+  SlideToUnlockText,
+  SlideToUnlockTrack,
+} from "~/components/slide-to-unlock";
 
 type TimerStyle = "countdown";
 
@@ -15,15 +21,18 @@ const createArray = (length: number, add = 0): WheelPickerOption[] =>
   Array.from({ length }, (_, i) => {
     const value = i + add;
     return {
-      label: value.toString(),
-      value: value.toString(), // Use simple string values
+      label: value.toString().padStart(2, "0"),
+      value: value.toString(),
     };
   });
 
-const timerOptions = createArray(60, 1);
+// Create options for minutes (0-60) and seconds (0-59)
+const minuteOptions = createArray(61, 0); // 0-60 minutes
+const secondOptions = createArray(60, 0); // 0-59 seconds
 
 export function ClientTimerGenerator() {
-  const [timerSeconds, setTimerSeconds] = useState(5);
+  const [minutes, setMinutes] = useState(0);
+  const [seconds, setSeconds] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
@@ -34,18 +43,23 @@ export function ClientTimerGenerator() {
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
 
-  // Handle timer value change from wheel picker
-  const handleTimerValueChange = (value: string) => {
-    console.log('🔧 Wheel picker value changed:', value);
+  // Calculate total seconds from minutes and seconds
+  const getTotalSeconds = () => {
+    return minutes * 60 + seconds;
+  };
 
-    const newTimerSeconds = parseInt(value, 10) || 1;
-    console.log('✅ Timer value updated:', {
-      stringValue: value,
-      parsedValue: newTimerSeconds,
-      previousTimerSeconds: timerSeconds
-    });
+  // Handle minutes value change
+  const handleMinutesChange = (value: string) => {
+    const newMinutes = parseInt(value, 10) || 0;
+    console.log('🔧 Minutes changed:', { newMinutes, oldMinutes: minutes });
+    setMinutes(newMinutes);
+  };
 
-    setTimerSeconds(newTimerSeconds);
+  // Handle seconds value change
+  const handleSecondsChange = (value: string) => {
+    const newSeconds = parseInt(value, 10) || 0;
+    console.log('🔧 Seconds changed:', { newSeconds, oldSeconds: seconds });
+    setSeconds(newSeconds);
   };
 
   
@@ -59,21 +73,22 @@ export function ClientTimerGenerator() {
       setVideoUrl(null);
     }
 
-    console.log('🎯 Generating timer with current state value:', timerSeconds);
+    const currentTimerSeconds = getTotalSeconds();
+    console.log('🎯 Generating timer:', { minutes, seconds, totalSeconds: currentTimerSeconds });
 
     try {
       const startTime = performance.now();
       const fps = 1;
-      const duration = timerSeconds + 1;
+      const duration = currentTimerSeconds + 1;
       const totalFrames = fps * duration;
       const workerId = Date.now();
 
       // Check main thread cache first
-      if (frameCache.has(timerSeconds)) {
-        console.log(`🎯 CACHE HIT: Using cached frames for ${timerSeconds}s timer`);
-        console.log(`⚡ Cache hit! ${timerSeconds}s timer loaded instantly`);
+      if (frameCache.has(currentTimerSeconds)) {
+        console.log(`🎯 CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`);
+        console.log(`⚡ Cache hit! ${currentTimerSeconds}s timer loaded instantly`);
 
-        const cachedFrames = frameCache.get(timerSeconds)!;
+        const cachedFrames = frameCache.get(currentTimerSeconds)!;
 
         // Create canvas for video recording
         const canvas = document.createElement('canvas');
@@ -189,7 +204,7 @@ export function ClientTimerGenerator() {
         }
       }
 
-      console.log(`🚀 Starting ${timerSeconds}s timer generation with Web Worker + MediaRecorder API...`);
+      console.log(`🚀 Starting ${currentTimerSeconds}s timer generation with Web Worker + MediaRecorder API...`);
 
       // Simple progress update function
       const updateProgress = (newProgress: number) => {
@@ -264,12 +279,12 @@ export function ClientTimerGenerator() {
         if (type === 'progress') {
           updateProgress(e.data.progress);
         } else if (type === 'complete') {
-          console.log(`🆕 FRESH FRAMES: Starting video encoding for new ${timerSeconds}s timer`);
-          console.log(`🔨 Generated fresh ${timerSeconds}s timer (now cached)`);
+          console.log(`🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`);
+          console.log(`🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`);
 
           // Cache the frames in main thread
-          frameCache.set(timerSeconds, e.data.frames);
-          console.log(`💾 Cached frames for ${timerSeconds}s timer in main thread (${e.data.frames.length} frames)`);
+          frameCache.set(currentTimerSeconds, e.data.frames);
+          console.log(`💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`);
 
           // Update cache info
           updateCacheInfo();
@@ -341,7 +356,7 @@ export function ClientTimerGenerator() {
       // Send timer generation request to worker
       worker.postMessage({
         action: 'generate',
-        timerSeconds,
+        timerSeconds: currentTimerSeconds,
         workerId
       });
 
@@ -578,7 +593,7 @@ export function ClientTimerGenerator() {
           body: JSON.stringify({
             video: base64data,
             filename: "timer-countdown.webm",
-            caption: `🕐 ${timerSeconds}→0 countdown timer sticker - ${timerSeconds + 1} seconds`,
+            caption: `🕐 ${minutes > 0 ? `${minutes}m ` : ''}${seconds}s countdown timer sticker - ${getTotalSeconds() + 1} seconds`,
           }),
         });
 
@@ -613,46 +628,62 @@ export function ClientTimerGenerator() {
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-6">
       {/* Timer Selection */}
-      <div className="text-center space-y-4">
-        <h1 className="text-xl font-semibold">Timer Duration</h1>
-
-        <WheelPickerWrapper>
-          <WheelPicker
-            options={timerOptions}
-            value={timerSeconds.toString()}
-            onValueChange={handleTimerValueChange}
-            infinite
-            optionItemHeight={44}
-            classNames={{
-              highlightWrapper: "bg-blue-500 text-white rounded-lg",
-              optionItem: "text-lg font-medium py-2",
-            }}
-          />
-        </WheelPickerWrapper>
-
-        <div className="text-center">
-          <div className="text-3xl font-bold text-blue-600">
-            {timerSeconds}s
-          </div>
+      <div className="w-full">
+        <div className="text-center space-y-4">
+          <WheelPickerWrapper>
+            <WheelPicker
+              options={minuteOptions}
+              value={minutes.toString()}
+              onValueChange={handleMinutesChange}
+              infinite
+              classNames={{
+                highlightWrapper: "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-xl rounded-r-none font-bold text-xl",
+                optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+              }}
+            />
+            <WheelPicker
+              options={secondOptions}
+              value={seconds.toString()}
+              onValueChange={handleSecondsChange}
+              infinite
+              classNames={{
+                highlightWrapper: "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-none rounded-r-xl font-bold text-xl",
+                optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+              }}
+            />
+          </WheelPickerWrapper>
         </div>
       </div>
 
-      {/* Generate Button */}
-      <Button
-        onClick={generateTimerClientSide}
-        disabled={isGenerating}
-        className="w-full h-12 text-lg"
-        size="lg"
-      >
-        {isGenerating ? (
-          <>
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Generating... {progress}%
-          </>
-        ) : (
-          "Generate Timer"
-        )}
-      </Button>
+      {/* Action Buttons */}
+      <div className="flex gap-3">
+        <Button
+          onClick={() => {
+            setMinutes(0);
+            setSeconds(5);
+          }}
+          disabled={isGenerating}
+          className="flex-1 h-12 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+          size="lg"
+        >
+          <RotateCcw className="h-5 w-5" />
+        </Button>
+        <Button
+          onClick={generateTimerClientSide}
+          disabled={isGenerating}
+          className="flex-1 h-12 rounded-full bg-[#ff197c] hover:bg-[#e0166a] text-white"
+          size="lg"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              {progress}%
+            </>
+          ) : (
+            <Check className="h-5 w-5" />
+          )}
+        </Button>
+      </div>
 
       {/* Progress */}
       {isGenerating && (
@@ -676,24 +707,30 @@ export function ClientTimerGenerator() {
             </video>
           </div>
 
-          <Button
-            onClick={sendToTelegram}
-            disabled={isSendingToTelegram}
-            className="w-full h-12 text-lg bg-blue-500 hover:bg-blue-600"
-            size="lg"
-          >
-            {isSendingToTelegram ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-5 w-5" />
-                Send to Telegram
-              </>
-            )}
-          </Button>
+          <div className="flex justify-center">
+            <SlideToUnlock
+              className="w-full rounded-xl bg-white dark:bg-zinc-900 ring-2 ring-[#ff197c]/20"
+              onUnlock={sendToTelegram}
+            >
+              <SlideToUnlockTrack>
+                <SlideToUnlockText>
+                  <span className="animate-pulse">slide to send</span>
+                </SlideToUnlockText>
+                <SlideToUnlockHandle
+                  className="bg-[#ff197c] text-white"
+                  disabled={isSendingToTelegram}
+                >
+                  {isSendingToTelegram ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 24 24" className="size-5" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M2.14753 11.8099C7.3949 9.52374 10.894 8.01654 12.6447 7.28833C17.6435 5.20916 18.6822 4.84799 19.3592 4.83606C19.5081 4.83344 19.8411 4.87034 20.0567 5.04534C20.2388 5.1931 20.2889 5.39271 20.3129 5.5328C20.3369 5.6729 20.3667 5.99204 20.343 6.2414C20.0721 9.08763 18.9 15.9947 18.3037 19.1825C18.0514 20.5314 17.5546 20.9836 17.0736 21.0279C16.0283 21.1241 15.2345 20.3371 14.2221 19.6735C12.6379 18.635 11.7429 17.9885 10.2051 16.9751C8.42795 15.804 9.58001 15.1603 10.5928 14.1084C10.8579 13.8331 15.4635 9.64397 15.5526 9.26395C15.5637 9.21642 15.5741 9.03926 15.4688 8.94571C15.3636 8.85216 15.2083 8.88415 15.0962 8.9096C14.9373 8.94566 12.4064 10.6184 7.50365 13.928C6.78528 14.4212 6.13461 14.6616 5.55163 14.649C4.90893 14.6351 3.67265 14.2856 2.7536 13.9869C1.62635 13.6204 0.730432 13.4267 0.808447 12.8044C0.849081 12.4803 1.29544 12.1488 2.14753 11.8099Z"></path>
+                    </svg>
+                  )}
+                </SlideToUnlockHandle>
+              </SlideToUnlockTrack>
+            </SlideToUnlock>
+          </div>
         </div>
       )}
     </div>
