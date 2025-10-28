@@ -35,4 +35,4 @@ export function ClientRoot({
       </ThemeProvider>
     </ConvexProvider>
   );
-} 
+}

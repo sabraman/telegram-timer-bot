@@ -23,5 +23,12 @@
 		"formatter": {
 			"quoteStyle": "double"
 		}
+	},
+	"css": {
+		"parser": {
+			"allowWrongLineComments": true,
+			"cssModules": false,
+			"tailwindDirectives": true
+		}
 	}
 }

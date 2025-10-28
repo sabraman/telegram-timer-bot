@@ -40,7 +40,7 @@ export function ShimmeringText({
         },
       },
     }),
-    [duration, text.length]
+    [duration, text.length],
   );
 
   return (
@@ -49,13 +49,13 @@ export function ShimmeringText({
         "inline-block select-none",
         "[--color:var(--color-zinc-400)] [--shimmering-color:var(--color-zinc-950)]",
         "dark:[--color:var(--color-zinc-600)] dark:[--shimmering-color:var(--color-zinc-50)]",
-        className
+        className,
       )}
       {...props}
     >
       {text?.split("")?.map((char, i) => (
         <motion.span
-          key={i}
+          key={`${char}-${i}-${text.indexOf(char)}`}
           className="inline-block whitespace-pre"
           initial="stopped"
           animate={isStopped ? "stopped" : "running"}

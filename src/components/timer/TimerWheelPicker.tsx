@@ -20,7 +20,12 @@ interface TimerWheelPickerProps {
   onSecondsChange: (seconds: number) => void;
 }
 
-export function TimerWheelPicker({ minutes, seconds, onMinutesChange, onSecondsChange }: TimerWheelPickerProps) {
+export function TimerWheelPicker({
+  minutes,
+  seconds,
+  onMinutesChange,
+  onSecondsChange,
+}: TimerWheelPickerProps) {
   const handleMinutesChange = (value: string) => {
     onMinutesChange(parseInt(value, 10) || 0);
   };
@@ -41,8 +46,10 @@ export function TimerWheelPicker({ minutes, seconds, onMinutesChange, onSecondsC
             onValueChange={handleMinutesChange}
             infinite
             classNames={{
-              highlightWrapper: "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-xl border-0 rounded-xl font-bold text-xl",
-              optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+              highlightWrapper:
+                "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-xl border-0 rounded-xl font-bold text-xl",
+              optionItem:
+                "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
             }}
           />
           <WheelPicker
@@ -51,15 +58,18 @@ export function TimerWheelPicker({ minutes, seconds, onMinutesChange, onSecondsC
             onValueChange={handleSecondsChange}
             infinite
             classNames={{
-              highlightWrapper: "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-xl border-0 rounded-xl font-bold text-xl",
-              optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+              highlightWrapper:
+                "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-xl border-0 rounded-xl font-bold text-xl",
+              optionItem:
+                "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
             }}
           />
         </WheelPickerWrapper>
 
         <div className="text-center">
           <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            {minutes > 0 ? `${minutes}m ` : ''}{seconds}s
+            {minutes > 0 ? `${minutes}m ` : ""}
+            {seconds}s
           </div>
         </div>
       </div>

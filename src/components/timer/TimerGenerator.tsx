@@ -1,11 +1,11 @@
 "use client";
 
+import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
-import { Label } from "~/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Loader2, Download } from "lucide-react";
+import { Label } from "~/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 
 type TimerStyle = "countdown" | "circular" | "progress";
 
@@ -44,7 +44,9 @@ export function TimerGenerator() {
         console.log("Timer generation response:", data);
 
         // Show a demo message for now
-        alert(`Timer generation started for ${selectedStyle} style!\n\nThis is a demo - full video rendering requires additional server configuration.`);
+        alert(
+          `Timer generation started for ${selectedStyle} style!\n\nThis is a demo - full video rendering requires additional server configuration.`,
+        );
 
         // Create a mock video URL for demonstration
         setVideoUrl("demo");
@@ -125,9 +127,12 @@ export function TimerGenerator() {
             {videoUrl === "demo" ? (
               <div className="border rounded-lg p-8 bg-muted/50 text-center">
                 <div className="text-6xl mb-4">🎬</div>
-                <h3 className="text-lg font-semibold mb-2">Timer Video Generated!</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  Timer Video Generated!
+                </h3>
                 <p className="text-muted-foreground mb-4">
-                  Your {selectedStyle} style timer is ready for production deployment.
+                  Your {selectedStyle} style timer is ready for production
+                  deployment.
                 </p>
                 <div className="text-sm text-muted-foreground">
                   <p>✅ Timer style: {selectedStyle}</p>
@@ -152,7 +157,11 @@ export function TimerGenerator() {
 
             <div className="flex gap-2">
               {videoUrl !== "demo" && (
-                <Button onClick={downloadVideo} variant="outline" className="flex-1">
+                <Button
+                  onClick={downloadVideo}
+                  variant="outline"
+                  className="flex-1"
+                >
                   <Download className="mr-2 h-4 w-4" />
                   Download
                 </Button>
@@ -160,7 +169,9 @@ export function TimerGenerator() {
               <Button
                 onClick={() => {
                   // In a real implementation, this would send to Telegram
-                  alert("In production, this would send the timer video via Telegram bot!");
+                  alert(
+                    "In production, this would send the timer video via Telegram bot!",
+                  );
                 }}
                 className="flex-1"
               >

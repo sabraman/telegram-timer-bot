@@ -1,8 +1,8 @@
 import {
+  AbsoluteFill,
+  interpolate,
   useCurrentFrame,
   useVideoConfig,
-  AbsoluteFill,
-  interpolate
 } from "remotion";
 
 type TimerStyle = "countdown" | "circular" | "progress";
@@ -11,7 +11,9 @@ interface TimerVideoProps {
   style?: TimerStyle;
 }
 
-export const TimerVideo: React.FC<TimerVideoProps> = ({ style = "countdown" }) => {
+export const TimerVideo: React.FC<TimerVideoProps> = ({
+  style = "countdown",
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -62,7 +64,10 @@ export const TimerVideo: React.FC<TimerVideoProps> = ({ style = "countdown" }) =
             strokeLinecap="round"
           />
         </svg>
-        <div className="absolute text-white font-bold" style={{ fontSize: "120px" }}>
+        <div
+          className="absolute text-white font-bold"
+          style={{ fontSize: "120px" }}
+        >
           {remainingSeconds}
         </div>
       </div>
@@ -74,7 +79,10 @@ export const TimerVideo: React.FC<TimerVideoProps> = ({ style = "countdown" }) =
 
     return (
       <div className="flex flex-col items-center justify-center bg-gradient-to-br from-orange-500 to-red-600 w-full h-full">
-        <div className="text-white font-bold mb-8" style={{ fontSize: "120px" }}>
+        <div
+          className="text-white font-bold mb-8"
+          style={{ fontSize: "120px" }}
+        >
           {remainingSeconds}
         </div>
         <div className="w-96 h-12 bg-white/30 rounded-full overflow-hidden">
@@ -101,9 +109,5 @@ export const TimerVideo: React.FC<TimerVideoProps> = ({ style = "countdown" }) =
     }
   };
 
-  return (
-    <AbsoluteFill>
-      {renderContent()}
-    </AbsoluteFill>
-  );
+  return <AbsoluteFill>{renderContent()}</AbsoluteFill>;
 };

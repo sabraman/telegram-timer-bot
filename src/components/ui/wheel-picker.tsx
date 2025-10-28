@@ -17,7 +17,7 @@ function WheelPickerWrapper({
         "w-56 rounded-2xl border border-zinc-200 bg-white px-2 shadow-lg dark:border-zinc-700/80 dark:bg-zinc-900",
         "*:data-rwp:first:*:data-rwp-highlight-wrapper:rounded-l-2xl",
         "*:data-rwp:last:*:data-rwp-highlight-wrapper:rounded-r-2xl",
-        className
+        className,
       )}
       {...props}
     />

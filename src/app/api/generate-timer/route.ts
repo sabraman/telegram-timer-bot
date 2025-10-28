@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { writeFile, unlink } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
+import { exec } from "node:child_process";
+import { unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { type NextRequest, NextResponse } from "next/server";
 
 const execAsync = promisify(exec);
 
@@ -83,15 +83,16 @@ module.exports = {
         `npx remotion render Timer "${outputFile}" --codec=webm --props='{"style":"${style}"}' --pixel-format=yuva420p --frames=1800`,
         {
           cwd: process.cwd(),
-          timeout: 60000 // 60 second timeout
-        }
+          timeout: 60000, // 60 second timeout
+        },
       );
 
       console.log("Remotion output:", stdout);
       if (stderr) console.log("Remotion stderr:", stderr);
 
       // Read the generated file
-      const videoBuffer = await require('fs').promises.readFile(outputFile);
+      const videoBuffer =
+        await require("node:fs").promises.readFile(outputFile);
 
       // Cleanup
       await unlink(tempIndexFile);
@@ -103,7 +104,6 @@ module.exports = {
           "Cache-Control": "no-cache",
         },
       });
-
     } catch (cliError) {
       console.error("CLI Error:", cliError);
 
@@ -112,15 +112,14 @@ module.exports = {
         message: "Timer generation initiated",
         style,
         status: "queued",
-        note: "Full Remotion integration requires CLI setup. This is a demo response."
+        note: "Full Remotion integration requires CLI setup. This is a demo response.",
       });
     }
-
   } catch (error) {
     console.error("Error generating timer video:", error);
     return NextResponse.json(
       { error: "Failed to generate timer video", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

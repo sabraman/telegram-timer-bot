@@ -1,23 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "~/components/ui/button";
-import { Progress } from "~/components/ui/progress";
-import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
-import { Loader2, Send, RotateCcw, Check } from "lucide-react";
-import { CanvasSource, Output, WebMOutputFormat, BufferTarget } from "mediabunny";
-import type { WheelPickerOption } from "~/components/ui/wheel-picker";
+import { Check, Loader2, RotateCcw } from "lucide-react";
+import {
+  BufferTarget,
+  CanvasSource,
+  Output,
+  WebMOutputFormat,
+} from "mediabunny";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
 import {
   SlideToUnlock,
   SlideToUnlockHandle,
   SlideToUnlockText,
   SlideToUnlockTrack,
 } from "~/components/slide-to-unlock";
-import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
+import { Button } from "~/components/ui/button";
+import { Progress } from "~/components/ui/progress";
+import type { WheelPickerOption } from "~/components/ui/wheel-picker";
+import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
 import { useHapticFeedback } from "~/hooks/use-haptic-feedback";
-import { toast } from "sonner";
-
-type TimerStyle = "countdown";
 
 // Create timer options for wheel picker
 const createArray = (length: number, add = 0): WheelPickerOption[] =>
@@ -41,7 +44,11 @@ export function ClientTimerGenerator() {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
-  const [cacheInfo, setCacheInfo] = useState<{count: number, timers: number[], totalFrames: number} | null>(null);
+  const [_cacheInfo, setCacheInfo] = useState<{
+    count: number;
+    timers: number[];
+    totalFrames: number;
+  } | null>(null);
 
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
@@ -52,12 +59,12 @@ export function ClientTimerGenerator() {
   // Play unlock sound
   const playUnlockSound = () => {
     try {
-      const audio = new Audio('/audio/unlock.wav');
+      const audio = new Audio("/audio/unlock.wav");
       audio.volume = 0.3;
       audio.play().catch(() => {
         // Silently fail if audio play is blocked by browser
       });
-    } catch (error) {
+    } catch (_error) {
       // Silently fail if audio is not supported
     }
   };
@@ -70,18 +77,17 @@ export function ClientTimerGenerator() {
   // Handle minutes value change
   const handleMinutesChange = (value: string) => {
     const newMinutes = parseInt(value, 10) || 0;
-    console.log('🔧 Minutes changed:', { newMinutes, oldMinutes: minutes });
+    console.log("🔧 Minutes changed:", { newMinutes, oldMinutes: minutes });
     setMinutes(newMinutes);
   };
 
   // Handle seconds value change
   const handleSecondsChange = (value: string) => {
     const newSeconds = parseInt(value, 10) || 0;
-    console.log('🔧 Seconds changed:', { newSeconds, oldSeconds: seconds });
+    console.log("🔧 Seconds changed:", { newSeconds, oldSeconds: seconds });
     setSeconds(newSeconds);
   };
 
-  
   const generateTimerClientSide = async () => {
     setIsGenerating(true);
     setProgress(0);
@@ -93,7 +99,11 @@ export function ClientTimerGenerator() {
     }
 
     const currentTimerSeconds = getTotalSeconds();
-    console.log('🎯 Generating timer:', { minutes, seconds, totalSeconds: currentTimerSeconds });
+    console.log("🎯 Generating timer:", {
+      minutes,
+      seconds,
+      totalSeconds: currentTimerSeconds,
+    });
 
     try {
       const startTime = performance.now();
@@ -104,30 +114,34 @@ export function ClientTimerGenerator() {
 
       // Check main thread cache first
       if (frameCache.has(currentTimerSeconds)) {
-        console.log(`🎯 CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`);
-        console.log(`⚡ Cache hit! ${currentTimerSeconds}s timer loaded instantly`);
+        console.log(
+          `🎯 CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`,
+        );
+        console.log(
+          `⚡ Cache hit! ${currentTimerSeconds}s timer loaded instantly`,
+        );
 
         const cachedFrames = frameCache.get(currentTimerSeconds)!;
 
         // Create canvas for video recording
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = 512;
         canvas.height = 512;
-        const ctx = canvas.getContext('2d', {
+        const ctx = canvas.getContext("2d", {
           alpha: true,
           desynchronized: true,
-          willReadFrequently: false
+          willReadFrequently: false,
         });
 
         if (!ctx) {
-          throw new Error('Could not get canvas context');
+          throw new Error("Could not get canvas context");
         }
 
         // Set up MediaRecorder with optimized settings
         const stream = canvas.captureStream(30); // Higher fps for fast generation
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp9',
-          videoBitsPerSecond: 500000
+          mimeType: "video/webm;codecs=vp9",
+          videoBitsPerSecond: 500000,
         });
 
         const chunks: Blob[] = [];
@@ -141,7 +155,7 @@ export function ClientTimerGenerator() {
         mediaRecorder.onstop = () => {
           const endTime = performance.now();
           const totalTime = endTime - startTime;
-          const blob = new Blob(chunks, { type: 'video/webm' });
+          const blob = new Blob(chunks, { type: "video/webm" });
           setVideoBlob(blob);
           const url = URL.createObjectURL(blob);
           setVideoUrl(url);
@@ -153,12 +167,14 @@ export function ClientTimerGenerator() {
             size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
             efficiency: `${((blob.size / 1024 / totalTime) * 1000).toFixed(2)} KB/s`,
             type: blob.type,
-            fromCache: true
+            fromCache: true,
           });
 
           const fileSizeMB = blob.size / 1024 / 1024;
           if (fileSizeMB > 50) {
-            alert(`⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
+            alert(
+              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+            );
           }
 
           setIsGenerating(false);
@@ -167,8 +183,14 @@ export function ClientTimerGenerator() {
 
         // INSTANT generation with Mediabunny - like Premiere Pro!
         try {
-          console.log('🚀 Using Mediabunny with Telegram VP9 settings from cache...');
-          const videoBlob = await encodeFramesToVideoInstantly(cachedFrames, fps, setProgress);
+          console.log(
+            "🚀 Using Mediabunny with Telegram VP9 settings from cache...",
+          );
+          const videoBlob = await encodeFramesToVideoInstantly(
+            cachedFrames,
+            fps,
+            setProgress,
+          );
 
           const endTime = performance.now();
           const totalTime = endTime - startTime;
@@ -181,22 +203,27 @@ export function ClientTimerGenerator() {
             totalTime: `${totalTime.toFixed(2)}ms`,
             size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
             type: videoBlob.type,
-            fromCache: true
+            fromCache: true,
           });
 
           const fileSizeMB = videoBlob.size / 1024 / 1024;
           if (fileSizeMB > 50) {
-            alert(`⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
+            alert(
+              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+            );
           }
 
           setIsGenerating(false);
           setProgress(0);
           return;
         } catch (error) {
-          console.error('Mediabunny encoding failed, falling back to real-time MediaRecorder:', error);
+          console.error(
+            "Mediabunny encoding failed, falling back to real-time MediaRecorder:",
+            error,
+          );
 
           // Fallback to real-time MediaRecorder (will take longer but works)
-          if (mediaRecorder.state !== 'recording') {
+          if (mediaRecorder.state !== "recording") {
             mediaRecorder.start();
           }
 
@@ -210,7 +237,9 @@ export function ClientTimerGenerator() {
             ctx.putImageData(cachedFrames[frameIndex], 0, 0);
             frameIndex++;
 
-            const progressPercent = Math.round((frameIndex / cachedFrames.length) * 100);
+            const progressPercent = Math.round(
+              (frameIndex / cachedFrames.length) * 100,
+            );
             setProgress(progressPercent);
 
             if (frameIndex < cachedFrames.length) {
@@ -223,7 +252,9 @@ export function ClientTimerGenerator() {
         }
       }
 
-      console.log(`🚀 Starting ${currentTimerSeconds}s timer generation with Web Worker + MediaRecorder API...`);
+      console.log(
+        `🚀 Starting ${currentTimerSeconds}s timer generation with Web Worker + MediaRecorder API...`,
+      );
 
       // Simple progress update function
       const updateProgress = (newProgress: number) => {
@@ -231,31 +262,31 @@ export function ClientTimerGenerator() {
       };
 
       // Create Web Worker for frame generation
-      const worker = new Worker('/timer-worker.js');
+      const worker = new Worker("/timer-worker.js");
 
       // Create canvas for video recording
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = 512;
       canvas.height = 512;
-      const ctx = canvas.getContext('2d', {
+      const ctx = canvas.getContext("2d", {
         alpha: true,
         desynchronized: true,
-        willReadFrequently: false
+        willReadFrequently: false,
       });
 
       if (!ctx) {
-        throw new Error('Could not get canvas context');
+        throw new Error("Could not get canvas context");
       }
 
       // Set up MediaRecorder with optimized settings
       const stream = canvas.captureStream(30); // Higher fps for fast generation
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 500000
+        mimeType: "video/webm;codecs=vp9",
+        videoBitsPerSecond: 500000,
       });
 
       const chunks: Blob[] = [];
-      let currentFrameIndex = 0;
+      const _currentFrameIndex = 0;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -266,7 +297,7 @@ export function ClientTimerGenerator() {
       mediaRecorder.onstop = () => {
         const endTime = performance.now();
         const totalTime = endTime - startTime;
-        const blob = new Blob(chunks, { type: 'video/webm' });
+        const blob = new Blob(chunks, { type: "video/webm" });
         setVideoBlob(blob);
         const url = URL.createObjectURL(blob);
         setVideoUrl(url);
@@ -277,13 +308,15 @@ export function ClientTimerGenerator() {
           fps: (totalFrames / (totalTime / 1000)).toFixed(1),
           size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
           efficiency: `${((blob.size / 1024 / totalTime) * 1000).toFixed(2)} KB/s`,
-          type: blob.type
+          type: blob.type,
         });
 
         // Check file size
         const fileSizeMB = blob.size / 1024 / 1024;
         if (fileSizeMB > 50) {
-          toast.warning(`Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
+          toast.warning(
+            `Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+          );
         }
 
         worker.terminate();
@@ -293,25 +326,35 @@ export function ClientTimerGenerator() {
 
       // Handle messages from worker
       worker.onmessage = async (e) => {
-        const { type, fromCache } = e.data;
+        const { type } = e.data;
 
-        if (type === 'progress') {
+        if (type === "progress") {
           updateProgress(e.data.progress);
-        } else if (type === 'complete') {
-          console.log(`🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`);
-          console.log(`🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`);
+        } else if (type === "complete") {
+          console.log(
+            `🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`,
+          );
+          console.log(
+            `🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`,
+          );
 
           // Cache the frames in main thread
           frameCache.set(currentTimerSeconds, e.data.frames);
-          console.log(`💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`);
+          console.log(
+            `💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`,
+          );
 
           // Update cache info
           updateCacheInfo();
 
           // INSTANT generation with Mediabunny - like Premiere Pro!
           try {
-            console.log('🚀 Using Mediabunny for instant encoding...');
-            const videoBlob = await encodeFramesToVideoInstantly(e.data.frames, fps, updateProgress);
+            console.log("🚀 Using Mediabunny for instant encoding...");
+            const videoBlob = await encodeFramesToVideoInstantly(
+              e.data.frames,
+              fps,
+              updateProgress,
+            );
 
             const endTime = performance.now();
             const totalTime = endTime - startTime;
@@ -324,12 +367,14 @@ export function ClientTimerGenerator() {
               totalTime: `${totalTime.toFixed(2)}ms`,
               size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
               type: videoBlob.type,
-              fromCache: false
+              fromCache: false,
             });
 
             const fileSizeMB = videoBlob.size / 1024 / 1024;
             if (fileSizeMB > 50) {
-              alert(`⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
+              alert(
+                `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+              );
             }
 
             worker.terminate();
@@ -337,10 +382,13 @@ export function ClientTimerGenerator() {
             setProgress(0);
             return;
           } catch (error) {
-            console.error('Mediabunny failed, falling back to MediaRecorder:', error);
+            console.error(
+              "Mediabunny failed, falling back to MediaRecorder:",
+              error,
+            );
 
             // Fallback to MediaRecorder (will take longer but works)
-            if (mediaRecorder.state !== 'recording') {
+            if (mediaRecorder.state !== "recording") {
               mediaRecorder.start();
             }
 
@@ -354,7 +402,9 @@ export function ClientTimerGenerator() {
               ctx.putImageData(e.data.frames[frameIndex], 0, 0);
               frameIndex++;
 
-              const progressPercent = Math.round((frameIndex / e.data.frames.length) * 100);
+              const progressPercent = Math.round(
+                (frameIndex / e.data.frames.length) * 100,
+              );
               updateProgress(progressPercent);
 
               if (frameIndex < e.data.frames.length) {
@@ -364,7 +414,7 @@ export function ClientTimerGenerator() {
 
             playFrame();
           }
-        } else if (type === 'error') {
+        } else if (type === "error") {
           throw new Error(e.data.error);
         }
       };
@@ -374,25 +424,30 @@ export function ClientTimerGenerator() {
 
       // Send timer generation request to worker
       worker.postMessage({
-        action: 'generate',
+        action: "generate",
         timerSeconds: currentTimerSeconds,
-        workerId
+        workerId,
       });
-
     } catch (error) {
       console.error("Error generating timer sticker:", error);
-      alert(`Failed to generate timer sticker: ${error instanceof Error ? error.message : String(error)}`);
+      alert(
+        `Failed to generate timer sticker: ${error instanceof Error ? error.message : String(error)}`,
+      );
       setIsGenerating(false);
       setProgress(0);
     }
   };
 
-  const encodeFramesToVideoWithWebCodecs = async (frames: ImageData[], fps: number, onProgress: (progress: number) => void): Promise<Blob> => {
+  const _encodeFramesToVideoWithWebCodecs = async (
+    frames: ImageData[],
+    fps: number,
+    onProgress: (progress: number) => void,
+  ): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       try {
         // Check WebCodecs support
-        if (typeof VideoEncoder === 'undefined') {
-          throw new Error('WebCodecs API not supported in this browser');
+        if (typeof VideoEncoder === "undefined") {
+          throw new Error("WebCodecs API not supported in this browser");
         }
 
         const chunks: Uint8Array[] = [];
@@ -400,39 +455,39 @@ export function ClientTimerGenerator() {
         let frameIndex = 0;
 
         const encoder = new VideoEncoder({
-          output: (chunk, metadata) => {
+          output: (chunk, _metadata) => {
             chunks.push(chunk);
             onProgress(Math.round(((frameIndex + 1) / frames.length) * 100));
 
             if (frameIndex === frames.length - 1) {
               // All frames encoded, create blob
-              const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
+              const blob = new Blob(chunks, { type: "video/webm;codecs=vp9" });
               resolve(blob);
             }
           },
           error: (error) => {
             reject(error);
-          }
+          },
         });
 
         // Configure encoder for VP9 with transparency support (sticker format)
         encoder.configure({
-          codec: 'vp09.00.10.08', // VP9 with alpha support
+          codec: "vp09.00.10.08", // VP9 with alpha support
           width: 512,
           height: 512,
           bitrate: 500000, // 500kbps
           framerate: fps,
-          latencyMode: 'realtime',
+          latencyMode: "realtime",
           // Alpha channel settings for stickers
-          alphaMode: 'keep', // Preserve transparency
-          hardwareAcceleration: 'prefer-hardware' // Allow hardware acceleration
+          alphaMode: "keep", // Preserve transparency
+          hardwareAcceleration: "prefer-hardware", // Allow hardware acceleration
         });
 
         // Encode all frames with correct timestamps
         for (let i = 0; i < frames.length; i++) {
           // Convert ImageData to VideoFrame with alpha channel support
           const canvas = new OffscreenCanvas(512, 512);
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext("2d");
 
           // Clear canvas to ensure transparency
           ctx.clearRect(0, 0, 512, 512);
@@ -443,7 +498,7 @@ export function ClientTimerGenerator() {
           const frame = new VideoFrame(canvas, {
             timestamp: i * frameDuration, // microseconds
             duration: frameDuration,
-            alpha: 'keep' // Preserve alpha channel
+            alpha: "keep", // Preserve alpha channel
           });
 
           encoder.encode(frame);
@@ -455,26 +510,13 @@ export function ClientTimerGenerator() {
         }
 
         encoder.flush();
-
       } catch (error) {
         reject(error);
       }
     });
   };
 
-  const updateCacheInfo = () => {
-    const cacheKeys = Array.from(frameCache.keys()).sort((a, b) => a - b);
-    const totalFrames = Array.from(frameCache.values()).reduce((sum, frames) => sum + frames.length, 0);
-    const info = {
-      count: frameCache.size,
-      timers: cacheKeys,
-      totalFrames
-    };
-    setCacheInfo(info);
-    console.log('📊 Main thread cache info:', info);
-  };
-
-  const clearCache = async () => {
+  const _clearCache = async () => {
     try {
       const cacheSize = frameCache.size;
       frameCache.clear();
@@ -482,22 +524,43 @@ export function ClientTimerGenerator() {
       console.log(`🗑️ Main thread cache cleared! Removed ${cacheSize} timer(s)`);
       console.log(`🗑️ Cache cleared! Removed ${cacheSize} timer(s)`);
     } catch (error) {
-      console.error('Error clearing cache:', error);
+      console.error("Error clearing cache:", error);
     }
   };
 
-  const getCacheInfo = async () => {
+  const updateCacheInfo = useCallback(() => {
+    const cacheKeys = Array.from(frameCache.keys()).sort((a, b) => a - b);
+    const totalFrames = Array.from(frameCache.values()).reduce(
+      (sum, frames) => sum + frames.length,
+      0,
+    );
+    const info = {
+      count: frameCache.size,
+      timers: cacheKeys,
+      totalFrames,
+    };
+    setCacheInfo(info);
+    console.log("📊 Main thread cache info:", info);
+  }, [frameCache]);
+
+  const getCacheInfo = useCallback(async () => {
     try {
       updateCacheInfo();
     } catch (error) {
-      console.error('Error getting cache info:', error);
+      console.error("Error getting cache info:", error);
     }
-  };
+  }, [updateCacheInfo]);
 
-  const encodeFramesToVideoInstantly = async (frames: ImageData[], fps: number, onProgress: (progress: number) => void): Promise<Blob> => {
+  const encodeFramesToVideoInstantly = async (
+    frames: ImageData[],
+    _fps: number,
+    onProgress: (progress: number) => void,
+  ): Promise<Blob> => {
     return new Promise(async (resolve, reject) => {
       try {
-        console.log('🚀 Using Mediabunny with Telegram-compatible VP9 settings...');
+        console.log(
+          "🚀 Using Mediabunny with Telegram-compatible VP9 settings...",
+        );
 
         // Create canvas with transparency support
         const canvas = new OffscreenCanvas(512, 512);
@@ -505,16 +568,16 @@ export function ClientTimerGenerator() {
         // Create CanvasSource with Telegram-compatible VP9 + alpha settings
         // Using specific codec string and alpha preservation for sticker compatibility
         const canvasSource = new CanvasSource(canvas, {
-          codec: 'vp9',
+          codec: "vp9",
           bitrate: 500000, // Same bitrate as working MediaRecorder
-          alpha: 'keep', // Preserve alpha channel for Telegram stickers (like -pix_fmt yuva420p)
-          fullCodecString: 'vp09.00.31.08' // VP9 codec with alpha support (similar to libvpx-vp9 settings)
+          alpha: "keep", // Preserve alpha channel for Telegram stickers (like -pix_fmt yuva420p)
+          fullCodecString: "vp09.00.31.08", // VP9 codec with alpha support (similar to libvpx-vp9 settings)
         });
 
         // Create Output with WebM format for Telegram compatibility
         const output = new Output({
           format: new WebMOutputFormat(),
-          target: new BufferTarget()
+          target: new BufferTarget(),
         });
 
         // Connect CanvasSource to Output (correct pattern)
@@ -529,9 +592,9 @@ export function ClientTimerGenerator() {
           const duration = 1.0; // Each frame lasts exactly 1 second
 
           // Draw frame to canvas with alpha channel
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext("2d");
           if (!ctx) {
-            throw new Error('Could not get canvas context');
+            throw new Error("Could not get canvas context");
           }
 
           // Clear canvas to ensure transparency
@@ -557,7 +620,7 @@ export function ClientTimerGenerator() {
 
         // Get the buffer and create blob with correct MIME type
         const buffer = output.target.buffer;
-        const blob = new Blob([buffer], { type: 'video/webm;codecs=vp9' });
+        const blob = new Blob([buffer], { type: "video/webm;codecs=vp9" });
 
         console.log(`✅ Video encoded instantly with Mediabunny!`, {
           duration: `${frames.length}s`, // 1fps = frames.length seconds
@@ -566,14 +629,13 @@ export function ClientTimerGenerator() {
           fps: 1,
           frameCount: frames.length,
           telegramCompatible: true,
-          codec: 'VP9 with alpha (vp09.00.31.08)',
-          transparencyEnabled: true
+          codec: "VP9 with alpha (vp09.00.31.08)",
+          transparencyEnabled: true,
         });
 
         resolve(blob);
-
       } catch (error) {
-        console.error('Mediabunny encoding failed:', error);
+        console.error("Mediabunny encoding failed:", error);
         reject(error);
       }
     });
@@ -584,15 +646,15 @@ export function ClientTimerGenerator() {
 
     // Play unlock sound and haptic feedback
     playUnlockSound();
-    impactOccurred('medium');
+    impactOccurred("medium");
 
     setIsSendingToTelegram(true);
     try {
       // Debug: Log blob details before conversion
-      console.log('🔍 Blob details before conversion:', {
+      console.log("🔍 Blob details before conversion:", {
         size: videoBlob.size,
         type: videoBlob.type,
-        isClosed: (videoBlob as any).closed || false
+        isClosed: (videoBlob as { closed?: boolean }).closed || false,
       });
 
       // Convert blob to base64 for API upload
@@ -601,11 +663,11 @@ export function ClientTimerGenerator() {
         const base64data = reader.result as string;
 
         // Debug: Log base64 conversion results
-        console.log('🔍 Base64 conversion results:', {
+        console.log("🔍 Base64 conversion results:", {
           originalBlobSize: videoBlob.size,
           base64DataLength: base64data.length,
-          base64Prefix: base64data.substring(0, 50) + '...',
-          mimeType: base64data.split(';')[0]?.split(':')[1] || 'unknown'
+          base64Prefix: `${base64data.substring(0, 50)}...`,
+          mimeType: base64data.split(";")[0]?.split(":")[1] || "unknown",
         });
 
         const response = await fetch("/api/send-to-telegram", {
@@ -616,12 +678,12 @@ export function ClientTimerGenerator() {
           body: JSON.stringify({
             video: base64data,
             filename: "timer-countdown.webm",
-            caption: `🕐 ${minutes > 0 ? `${minutes}m ` : ''}${seconds}s countdown timer sticker - ${getTotalSeconds() + 1} seconds`,
+            caption: `🕐 ${minutes > 0 ? `${minutes}m ` : ""}${seconds}s countdown timer sticker - ${getTotalSeconds() + 1} seconds`,
           }),
         });
 
         if (response.ok) {
-          notificationOccurred('success');
+          notificationOccurred("success");
           toast.success("Timer sticker sent");
         } else {
           const error = await response.json();
@@ -630,8 +692,8 @@ export function ClientTimerGenerator() {
       };
 
       reader.onerror = (error) => {
-        console.error('🔍 FileReader error:', error);
-        toast.error('Failed to read video file for upload');
+        console.error("🔍 FileReader error:", error);
+        toast.error("Failed to read video file for upload");
         setIsSendingToTelegram(false);
       };
 
@@ -647,7 +709,7 @@ export function ClientTimerGenerator() {
   // Load cache info on component mount
   useEffect(() => {
     getCacheInfo();
-  }, []);
+  }, [getCacheInfo]);
 
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-6">
@@ -661,8 +723,10 @@ export function ClientTimerGenerator() {
               onValueChange={handleMinutesChange}
               infinite
               classNames={{
-                highlightWrapper: "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-xl rounded-r-none font-bold text-xl",
-                optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+                highlightWrapper:
+                  "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-xl rounded-r-none font-bold text-xl",
+                optionItem:
+                  "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
               }}
             />
             <WheelPicker
@@ -671,8 +735,10 @@ export function ClientTimerGenerator() {
               onValueChange={handleSecondsChange}
               infinite
               classNames={{
-                highlightWrapper: "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-none rounded-r-xl font-bold text-xl",
-                optionItem: "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
+                highlightWrapper:
+                  "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-none rounded-r-xl font-bold text-xl",
+                optionItem:
+                  "text-zinc-400 dark:text-zinc-500 font-semibold text-lg",
               }}
             />
           </WheelPickerWrapper>
@@ -710,9 +776,7 @@ export function ClientTimerGenerator() {
       </div>
 
       {/* Progress */}
-      {isGenerating && (
-        <Progress value={progress} className="h-2" />
-      )}
+      {isGenerating && <Progress value={progress} className="h-2" />}
 
       {/* Video Preview */}
       {videoUrl && (
@@ -753,7 +817,14 @@ export function ClientTimerGenerator() {
                   {isSendingToTelegram ? (
                     <Loader2 className="size-5 animate-spin" />
                   ) : (
-                    <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 24 24" className="size-5" xmlns="http://www.w3.org/2000/svg">
+                    <svg
+                      stroke="currentColor"
+                      fill="currentColor"
+                      strokeWidth="0"
+                      viewBox="0 0 24 24"
+                      className="size-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
                       <path d="M2.14753 11.8099C7.3949 9.52374 10.894 8.01654 12.6447 7.28833C17.6435 5.20916 18.6822 4.84799 19.3592 4.83606C19.5081 4.83344 19.8411 4.87034 20.0567 5.04534C20.2388 5.1931 20.2889 5.39271 20.3129 5.5328C20.3369 5.6729 20.3667 5.99204 20.343 6.2414C20.0721 9.08763 18.9 15.9947 18.3037 19.1825C18.0514 20.5314 17.5546 20.9836 17.0736 21.0279C16.0283 21.1241 15.2345 20.3371 14.2221 19.6735C12.6379 18.635 11.7429 17.9885 10.2051 16.9751C8.42795 15.804 9.58001 15.1603 10.5928 14.1084C10.8579 13.8331 15.4635 9.64397 15.5526 9.26395C15.5637 9.21642 15.5741 9.03926 15.4688 8.94571C15.3636 8.85216 15.2083 8.88415 15.0962 8.9096C14.9373 8.94566 12.4064 10.6184 7.50365 13.928C6.78528 14.4212 6.13461 14.6616 5.55163 14.649C4.90893 14.6351 3.67265 14.2856 2.7536 13.9869C1.62635 13.6204 0.730432 13.4267 0.808447 12.8044C0.849081 12.4803 1.29544 12.1488 2.14753 11.8099Z"></path>
                     </svg>
                   )}

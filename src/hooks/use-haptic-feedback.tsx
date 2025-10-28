@@ -5,13 +5,15 @@ import { hapticFeedback } from "@telegram-apps/sdk-react";
  * Returns functions to trigger different haptic feedback types.
  */
 export function useHapticFeedback() {
-  const triggerImpact = (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' = 'medium') => {
+  const triggerImpact = (
+    style: "light" | "medium" | "heavy" | "rigid" | "soft" = "medium",
+  ) => {
     if (hapticFeedback.impactOccurred.isSupported()) {
       hapticFeedback.impactOccurred(style);
     }
   };
 
-  const triggerNotification = (type: 'error' | 'success' | 'warning') => {
+  const triggerNotification = (type: "error" | "success" | "warning") => {
     if (hapticFeedback.notificationOccurred.isSupported()) {
       hapticFeedback.notificationOccurred(type);
     }
