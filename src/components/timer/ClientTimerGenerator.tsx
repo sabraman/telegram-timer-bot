@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Progress } from "~/components/ui/progress";
 import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
-import { Loader2, Send, Clock } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { CanvasSource, Output, WebMOutputFormat, BufferTarget } from "mediabunny";
 import type { WheelPickerOption } from "~/components/ui/wheel-picker";
 
@@ -31,7 +29,6 @@ export function ClientTimerGenerator() {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
-  const [cacheStatus, setCacheStatus] = useState<string>('');
   const [cacheInfo, setCacheInfo] = useState<{count: number, timers: number[], totalFrames: number} | null>(null);
 
   // Frame cache for instant regeneration (main thread)
@@ -55,7 +52,6 @@ export function ClientTimerGenerator() {
   const generateTimerClientSide = async () => {
     setIsGenerating(true);
     setProgress(0);
-    setCacheStatus('');
 
     setVideoBlob(null);
     if (videoUrl) {
@@ -75,7 +71,7 @@ export function ClientTimerGenerator() {
       // Check main thread cache first
       if (frameCache.has(timerSeconds)) {
         console.log(`🎯 CACHE HIT: Using cached frames for ${timerSeconds}s timer`);
-        setCacheStatus(`⚡ Cache hit! ${timerSeconds}s timer loaded instantly`);
+        console.log(`⚡ Cache hit! ${timerSeconds}s timer loaded instantly`);
 
         const cachedFrames = frameCache.get(timerSeconds)!;
 
@@ -133,7 +129,6 @@ export function ClientTimerGenerator() {
 
           setIsGenerating(false);
           setProgress(0);
-          setTimeout(() => setCacheStatus(''), 3000);
         };
 
         // INSTANT generation with Mediabunny - like Premiere Pro!
@@ -162,7 +157,6 @@ export function ClientTimerGenerator() {
 
           setIsGenerating(false);
           setProgress(0);
-          setTimeout(() => setCacheStatus(''), 3000);
           return;
         } catch (error) {
           console.error('Mediabunny encoding failed, falling back to real-time MediaRecorder:', error);
@@ -261,8 +255,6 @@ export function ClientTimerGenerator() {
         worker.terminate();
         setIsGenerating(false);
         setProgress(0);
-        // Keep cache status for a bit, then clear it
-        setTimeout(() => setCacheStatus(''), 3000);
       };
 
       // Handle messages from worker
@@ -273,7 +265,7 @@ export function ClientTimerGenerator() {
           updateProgress(e.data.progress);
         } else if (type === 'complete') {
           console.log(`🆕 FRESH FRAMES: Starting video encoding for new ${timerSeconds}s timer`);
-          setCacheStatus(`🔨 Generated fresh ${timerSeconds}s timer (now cached)`);
+          console.log(`🔨 Generated fresh ${timerSeconds}s timer (now cached)`);
 
           // Cache the frames in main thread
           frameCache.set(timerSeconds, e.data.frames);
@@ -309,7 +301,6 @@ export function ClientTimerGenerator() {
             worker.terminate();
             setIsGenerating(false);
             setProgress(0);
-            setTimeout(() => setCacheStatus(''), 3000);
             return;
           } catch (error) {
             console.error('Mediabunny failed, falling back to MediaRecorder:', error);
@@ -455,12 +446,9 @@ export function ClientTimerGenerator() {
       frameCache.clear();
       setCacheInfo(null);
       console.log(`🗑️ Main thread cache cleared! Removed ${cacheSize} timer(s)`);
-      setCacheStatus(`🗑️ Cache cleared! Removed ${cacheSize} timer(s)`);
-      setTimeout(() => setCacheStatus(''), 3000);
+      console.log(`🗑️ Cache cleared! Removed ${cacheSize} timer(s)`);
     } catch (error) {
       console.error('Error clearing cache:', error);
-      setCacheStatus('❌ Failed to clear cache');
-      setTimeout(() => setCacheStatus(''), 3000);
     }
   };
 
@@ -623,169 +611,91 @@ export function ClientTimerGenerator() {
   }, []);
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Generate Timer Sticker</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Cache Management */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Cache Management</span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={getCacheInfo}
-                disabled={isGenerating}
-              >
-                📊 Info
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearCache}
-                disabled={isGenerating}
-              >
-                🗑️ Clear
-              </Button>
-            </div>
+    <div className="w-full max-w-sm mx-auto p-4 space-y-6">
+      {/* Timer Selection */}
+      <div className="text-center space-y-4">
+        <h1 className="text-xl font-semibold">Timer Duration</h1>
+
+        <WheelPickerWrapper>
+          <WheelPicker
+            options={timerOptions}
+            value={timerSeconds.toString()}
+            onValueChange={handleTimerValueChange}
+            infinite
+            optionItemHeight={44}
+            classNames={{
+              highlightWrapper: "bg-blue-500 text-white rounded-lg",
+              optionItem: "text-lg font-medium py-2",
+            }}
+          />
+        </WheelPickerWrapper>
+
+        <div className="text-center">
+          <div className="text-3xl font-bold text-blue-600">
+            {timerSeconds}s
           </div>
-
-          {cacheInfo && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                📊 Cache: {cacheInfo.count} timer(s) cached
-              </p>
-              {cacheInfo.timers.length > 0 && (
-                <p className="text-xs text-blue-600 dark:text-blue-400">
-                  Durations: {cacheInfo.timers.join('s, ')}s ({cacheInfo.totalFrames} frames)
-                </p>
-              )}
-            </div>
-          )}
         </div>
+      </div>
 
-        {/* Timer Duration Wheel Picker */}
+      {/* Generate Button */}
+      <Button
+        onClick={generateTimerClientSide}
+        disabled={isGenerating}
+        className="w-full h-12 text-lg"
+        size="lg"
+      >
+        {isGenerating ? (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Generating... {progress}%
+          </>
+        ) : (
+          "Generate Timer"
+        )}
+      </Button>
+
+      {/* Progress */}
+      {isGenerating && (
+        <Progress value={progress} className="h-2" />
+      )}
+
+      {/* Video Preview */}
+      {videoUrl && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <label className="text-sm font-medium">Timer Duration</label>
-          </div>
-
-          <div className="flex justify-center">
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800/50">
-              <WheelPickerWrapper>
-                <WheelPicker
-                  options={timerOptions}
-                  value={timerSeconds.toString()}
-                  onValueChange={handleTimerValueChange}
-                  infinite
-                  optionItemHeight={40}
-                  classNames={{
-                    highlightWrapper:
-                      "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg border-0 rounded-lg",
-                    optionItem: "text-lg font-medium text-gray-600 dark:text-gray-400 py-2",
-                  }}
-                />
-              </WheelPickerWrapper>
-
-              {/* Debug Display */}
-              <div className="mt-4 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <p className="text-xs font-mono text-yellow-800 dark:text-yellow-200">
-                  DEBUG: timerSeconds = {timerSeconds}
-                </p>
-                <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                  Scroll the wheel picker and watch this value change
-                </p>
-              </div>
-
-              <div className="mt-4 text-center">
-                <div className="inline-flex items-center gap-2 bg-white dark:bg-gray-800 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    {timerSeconds}
-                  </span>
-                  <span className="text-sm text-muted-foreground">seconds</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Timer will count down from {timerSeconds} to 0 ({timerSeconds + 1} seconds total)
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Generate Button */}
-        <Button
-          onClick={generateTimerClientSide}
-          disabled={isGenerating}
-          className="w-full"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating... {progress}%
-            </>
-          ) : (
-            "Generate Timer Sticker"
-          )}
-        </Button>
-
-        {/* Loading Progress */}
-        {isGenerating && (
-          <div className="space-y-2">
-            <Progress value={progress} className="w-full" />
-            {cacheStatus && (
-              <p className="text-xs text-muted-foreground text-center">
-                {cacheStatus}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Video Preview */}
-        {videoUrl && (
-          <div className="space-y-3">
-            {cacheStatus && !isGenerating && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-2">
-                <p className="text-xs text-green-700 dark:text-green-300 text-center">
-                  {cacheStatus}
-                </p>
-              </div>
-            )}
-            <div className="border rounded-lg overflow-hidden">
-              <video
-                src={videoUrl}
-                controls
-                className="w-full h-auto"
-                muted
-                loop
-                playsInline
-              >
-                Your browser does not support the video tag.
-              </video>
-            </div>
-
-            <Button
-              onClick={sendToTelegram}
-              disabled={isSendingToTelegram}
-              className="w-full"
+          <div className="rounded-none overflow-hidden bg-transparent">
+            <video
+              src={videoUrl}
+              controls={false}
+              autoPlay
+              className="w-full h-auto"
+              muted
+              loop
+              playsInline
             >
-              {isSendingToTelegram ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending to Telegram...
-                </>
-              ) : (
-                <>
-                  <Send className="mr-2 h-4 w-4" />
-                  Send to Telegram
-                </>
-              )}
-            </Button>
+              Your browser does not support the video tag.
+            </video>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          <Button
+            onClick={sendToTelegram}
+            disabled={isSendingToTelegram}
+            className="w-full h-12 text-lg bg-blue-500 hover:bg-blue-600"
+            size="lg"
+          >
+            {isSendingToTelegram ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-5 w-5" />
+                Send to Telegram
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
