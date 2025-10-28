@@ -9,6 +9,7 @@ import {
 } from "mediabunny";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import LottieSuccessToast from "~/components/ui/lottie-success-toast";
 import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
 import {
   SlideToUnlock,
@@ -44,6 +45,7 @@ export function ClientTimerGenerator() {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
+  const [showLottieSuccess, setShowLottieSuccess] = useState(false);
   const [_cacheInfo, setCacheInfo] = useState<{
     count: number;
     timers: number[];
@@ -684,7 +686,7 @@ export function ClientTimerGenerator() {
 
         if (response.ok) {
           notificationOccurred("success");
-          toast.success("Timer sticker sent");
+          setShowLottieSuccess(true);
         } else {
           const error = await response.json();
           toast.error(`Failed to send to Telegram: ${error.message}`);
@@ -834,6 +836,11 @@ export function ClientTimerGenerator() {
           </div>
         </div>
       )}
+
+      <LottieSuccessToast
+        isVisible={showLottieSuccess}
+        onComplete={() => setShowLottieSuccess(false)}
+      />
     </div>
   );
 }
