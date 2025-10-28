@@ -10,6 +10,14 @@ export async function POST(request: NextRequest) {
   try {
     const { video, filename, caption } = await request.json();
 
+    // Debug: Log what we received
+    console.log('🔍 API received data:', {
+      videoLength: video?.length || 0,
+      filename,
+      videoPrefix: video?.substring(0, 50) + '...' || 'missing',
+      receivedDataSize: JSON.stringify({ video, filename, caption }).length
+    });
+
     if (!video || !filename) {
       return NextResponse.json(
         { error: "Video data and filename are required" },
@@ -30,10 +38,25 @@ export async function POST(request: NextRequest) {
     // Extract base64 data (handle both WebM and MP4)
     let base64Data = video;
     if (video.startsWith('data:video/')) {
-      base64Data = video.replace(/^data:video\/[^;]+;base64,/, "");
+      // Fixed regex to handle codecs parameter: data:video/webm;codecs=vp9;base64,
+      base64Data = video.replace(/^data:video\/[^;]+(?:;[^=]+=[^;]+)*;base64,/, "");
     }
 
+    // Debug: Log base64 processing
+    console.log('🔍 Base64 processing:', {
+      originalLength: video.length,
+      afterStripping: base64Data.length,
+      prefixRemoved: video.length - base64Data.length
+    });
+
     const buffer = Buffer.from(base64Data, "base64");
+
+    // Debug: Log buffer creation
+    console.log('🔍 Buffer created:', {
+      bufferSize: buffer.length,
+      originalBase64Size: base64Data.length,
+      expectedSize: Math.floor(base64Data.length * 0.75) // Rough estimate
+    });
 
     try {
       // Check file size before attempting upload

@@ -107,7 +107,7 @@ export function ClientTimerGenerator() {
 
         // INSTANT generation with Mediabunny - like Premiere Pro!
         try {
-          console.log('🚀 Using instant Mediabunny encoding from cache...');
+          console.log('🚀 Using Mediabunny with Telegram VP9 settings from cache...');
           const videoBlob = await encodeFramesToVideoInstantly(cachedFrames, fps, setProgress);
 
           const endTime = performance.now();
@@ -444,16 +444,18 @@ export function ClientTimerGenerator() {
   const encodeFramesToVideoInstantly = async (frames: ImageData[], fps: number, onProgress: (progress: number) => void): Promise<Blob> => {
     return new Promise(async (resolve, reject) => {
       try {
-        console.log('🚀 Using optimal Mediabunny encoding with correct timing...');
+        console.log('🚀 Using Mediabunny with Telegram-compatible VP9 settings...');
 
         // Create canvas with transparency support
         const canvas = new OffscreenCanvas(512, 512);
 
         // Create CanvasSource with Telegram-compatible VP9 + alpha settings
+        // Using specific codec string and alpha preservation for sticker compatibility
         const canvasSource = new CanvasSource(canvas, {
           codec: 'vp9',
-          bitrate: 500000, // Exact same bitrate as working MediaRecorder
-          alpha: 'keep' // Preserve alpha channel for Telegram stickers
+          bitrate: 500000, // Same bitrate as working MediaRecorder
+          alpha: 'keep', // Preserve alpha channel for Telegram stickers (like -pix_fmt yuva420p)
+          fullCodecString: 'vp09.00.31.08' // VP9 codec with alpha support (similar to libvpx-vp9 settings)
         });
 
         // Create Output with WebM format for Telegram compatibility
@@ -486,6 +488,7 @@ export function ClientTimerGenerator() {
           ctx.putImageData(frames[i], 0, 0);
 
           // Add frame with precise timing for 1fps playback
+          // This should create the equivalent of FFmpeg's -auto-alt-ref 0 setting
           await canvasSource.add(timestamp, duration);
 
           // Update progress
@@ -500,7 +503,7 @@ export function ClientTimerGenerator() {
         await output.finalize();
 
         // Get the buffer and create blob with correct MIME type
-        const buffer = output.target.buffer; // Correct property for BufferTarget
+        const buffer = output.target.buffer;
         const blob = new Blob([buffer], { type: 'video/webm;codecs=vp9' });
 
         console.log(`✅ Video encoded instantly with Mediabunny!`, {
@@ -509,7 +512,9 @@ export function ClientTimerGenerator() {
           type: blob.type,
           fps: 1,
           frameCount: frames.length,
-          telegramCompatible: true
+          telegramCompatible: true,
+          codec: 'VP9 with alpha (vp09.00.31.08)',
+          transparencyEnabled: true
         });
 
         resolve(blob);
@@ -526,10 +531,25 @@ export function ClientTimerGenerator() {
 
     setIsSendingToTelegram(true);
     try {
+      // Debug: Log blob details before conversion
+      console.log('🔍 Blob details before conversion:', {
+        size: videoBlob.size,
+        type: videoBlob.type,
+        isClosed: (videoBlob as any).closed || false
+      });
+
       // Convert blob to base64 for API upload
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64data = reader.result as string;
+
+        // Debug: Log base64 conversion results
+        console.log('🔍 Base64 conversion results:', {
+          originalBlobSize: videoBlob.size,
+          base64DataLength: base64data.length,
+          base64Prefix: base64data.substring(0, 50) + '...',
+          mimeType: base64data.split(';')[0]?.split(':')[1] || 'unknown'
+        });
 
         const response = await fetch("/api/send-to-telegram", {
           method: "POST",
@@ -550,6 +570,13 @@ export function ClientTimerGenerator() {
           alert(`❌ Failed to send to Telegram: ${error.message}`);
         }
       };
+
+      reader.onerror = (error) => {
+        console.error('🔍 FileReader error:', error);
+        alert('❌ Failed to read video file for upload');
+        setIsSendingToTelegram(false);
+      };
+
       reader.readAsDataURL(videoBlob);
     } catch (error) {
       console.error("Error sending to Telegram:", error);
