@@ -7,7 +7,7 @@ import {
   Output,
   WebMOutputFormat,
 } from "mediabunny";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import LottieSuccessToast from "~/components/ui/lottie-success-toast";
 import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
@@ -46,6 +46,7 @@ export function ClientTimerGenerator() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
   const [showLottieSuccess, setShowLottieSuccess] = useState(false);
+  const videoPreviewRef = useRef<HTMLDivElement>(null);
   const [_cacheInfo, setCacheInfo] = useState<{
     count: number;
     timers: number[];
@@ -713,6 +714,22 @@ export function ClientTimerGenerator() {
     getCacheInfo();
   }, [getCacheInfo]);
 
+  // Smooth autoscroll to video preview when video is generated
+  useEffect(() => {
+    if (videoUrl && videoPreviewRef.current) {
+      const scrollToVideo = () => {
+        videoPreviewRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      };
+
+      // Small delay to ensure the video preview is rendered
+      setTimeout(scrollToVideo, 100);
+    }
+  }, [videoUrl]);
+
   return (
     <div className="w-full max-w-sm mx-auto p-4 space-y-6">
       {/* Timer Selection */}
@@ -782,7 +799,7 @@ export function ClientTimerGenerator() {
 
       {/* Video Preview */}
       {videoUrl && (
-        <div className="space-y-4">
+        <div ref={videoPreviewRef} className="space-y-4">
           <div className="rounded-none overflow-hidden bg-transparent">
             <video
               src={videoUrl}
