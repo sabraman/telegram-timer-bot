@@ -2,6 +2,7 @@
 
 import {
   backButton,
+  hapticFeedback,
   init,
   isTMA,
   mainButton,
@@ -84,6 +85,7 @@ export function MiniApp({
       mainButton.mount();
     }
 
+    
     if (miniApp.bindCssVars.isAvailable() && !miniApp.isCssVarsBound()) {
       miniApp.bindCssVars();
     }

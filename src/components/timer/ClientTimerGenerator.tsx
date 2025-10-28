@@ -13,6 +13,9 @@ import {
   SlideToUnlockText,
   SlideToUnlockTrack,
 } from "~/components/slide-to-unlock";
+import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
+import { useHapticFeedback } from "~/hooks/use-haptic-feedback";
+import { toast } from "sonner";
 
 type TimerStyle = "countdown";
 
@@ -42,6 +45,22 @@ export function ClientTimerGenerator() {
 
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
+
+  // Haptic feedback
+  const { impactOccurred, notificationOccurred } = useHapticFeedback();
+
+  // Play unlock sound
+  const playUnlockSound = () => {
+    try {
+      const audio = new Audio('/audio/unlock.wav');
+      audio.volume = 0.3;
+      audio.play().catch(() => {
+        // Silently fail if audio play is blocked by browser
+      });
+    } catch (error) {
+      // Silently fail if audio is not supported
+    }
+  };
 
   // Calculate total seconds from minutes and seconds
   const getTotalSeconds = () => {
@@ -264,7 +283,7 @@ export function ClientTimerGenerator() {
         // Check file size
         const fileSizeMB = blob.size / 1024 / 1024;
         if (fileSizeMB > 50) {
-          alert(`⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
+          toast.warning(`Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`);
         }
 
         worker.terminate();
@@ -563,6 +582,10 @@ export function ClientTimerGenerator() {
   const sendToTelegram = async () => {
     if (!videoBlob) return;
 
+    // Play unlock sound and haptic feedback
+    playUnlockSound();
+    impactOccurred('medium');
+
     setIsSendingToTelegram(true);
     try {
       // Debug: Log blob details before conversion
@@ -598,23 +621,24 @@ export function ClientTimerGenerator() {
         });
 
         if (response.ok) {
-          alert("✅ Timer video sent to Telegram successfully!");
+          notificationOccurred('success');
+          toast.success("Timer sticker sent");
         } else {
           const error = await response.json();
-          alert(`❌ Failed to send to Telegram: ${error.message}`);
+          toast.error(`Failed to send to Telegram: ${error.message}`);
         }
       };
 
       reader.onerror = (error) => {
         console.error('🔍 FileReader error:', error);
-        alert('❌ Failed to read video file for upload');
+        toast.error('Failed to read video file for upload');
         setIsSendingToTelegram(false);
       };
 
       reader.readAsDataURL(videoBlob);
     } catch (error) {
       console.error("Error sending to Telegram:", error);
-      alert("Failed to send video to Telegram.");
+      toast.error("Failed to send video to Telegram");
     } finally {
       setIsSendingToTelegram(false);
     }
@@ -709,15 +733,21 @@ export function ClientTimerGenerator() {
 
           <div className="flex justify-center">
             <SlideToUnlock
-              className="w-full rounded-xl bg-white dark:bg-zinc-900 ring-2 ring-[#ff197c]/20"
+              className="w-full rounded-2xl bg-white dark:bg-zinc-900 ring-2 ring-[#ff197c]/20"
               onUnlock={sendToTelegram}
             >
               <SlideToUnlockTrack>
                 <SlideToUnlockText>
-                  <span className="animate-pulse">slide to send</span>
+                  <TextShimmer
+                    className="text-lg font-semibold"
+                    duration={2.5}
+                    spread={3}
+                  >
+                    slide to send
+                  </TextShimmer>
                 </SlideToUnlockText>
                 <SlideToUnlockHandle
-                  className="bg-[#ff197c] text-white"
+                  className="bg-[#ff197c] text-white rounded-xl"
                   disabled={isSendingToTelegram}
                 >
                   {isSendingToTelegram ? (
