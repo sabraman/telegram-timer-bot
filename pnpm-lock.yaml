@@ -90,12 +90,18 @@ importers:
       geist:
         specifier: ^1.4.2
         version: 1.4.2(next@15.2.3(babel-plugin-react-compiler@19.0.0-beta-3229e95-20250315)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
+      gif.js:
+        specifier: ^0.2.0
+        version: 0.2.0
       grammy:
         specifier: ^1.36.3
         version: 1.36.3
       lucide-react:
         specifier: ^0.447.0
         version: 0.447.0(react@19.0.0)
+      mediabunny:
+        specifier: ^1.24.2
+        version: 1.24.2
       next:
         specifier: 15.2.3
         version: 15.2.3(babel-plugin-react-compiler@19.0.0-beta-3229e95-20250315)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -2471,6 +2477,9 @@ packages:
   get-tsconfig@4.10.1:
     resolution: {integrity: sha512-auHyJ4AgMz7vgS8Hp3N6HXSmlMdUyhSUrfBF16w153rxtLIEOE+HGqaBppczZvnHLqQJfiHotCYpNhl0lUROFQ==}
 
+  gif.js@0.2.0:
+    resolution: {integrity: sha512-bYxCoT8OZKmbxY8RN4qDiYuj4nrQDTzgLRcFVovyona1PTWNePzI4nzOmotnlOFIzTk/ZxAHtv+TfVLiBWj/hw==}
+
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
@@ -4717,14 +4726,14 @@ snapshots:
       '@remotion/media-parser': 4.0.369
       '@remotion/studio': 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@remotion/studio-shared': 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      css-loader: 5.2.7(webpack@5.96.1)
+      css-loader: 5.2.7(webpack@5.96.1(esbuild@0.25.0))
       esbuild: 0.25.0
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
       react-refresh: 0.9.0
       remotion: 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       source-map: 0.7.3
-      style-loader: 4.0.0(webpack@5.96.1)
+      style-loader: 4.0.0(webpack@5.96.1(esbuild@0.25.0))
       webpack: 5.96.1(esbuild@0.25.0)
     transitivePeerDependencies:
       - '@swc/core'
@@ -5551,7 +5560,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@5.2.7(webpack@5.96.1):
+  css-loader@5.2.7(webpack@5.96.1(esbuild@0.25.0)):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.6)
       loader-utils: 2.0.4
@@ -6222,6 +6231,8 @@ snapshots:
   get-tsconfig@4.10.1:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  gif.js@0.2.0: {}
 
   glob-parent@5.1.2:
     dependencies:
@@ -7246,7 +7257,7 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  style-loader@4.0.0(webpack@5.96.1):
+  style-loader@4.0.0(webpack@5.96.1(esbuild@0.25.0)):
     dependencies:
       webpack: 5.96.1(esbuild@0.25.0)
 
