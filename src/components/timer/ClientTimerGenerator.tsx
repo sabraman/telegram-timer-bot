@@ -1,14 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Progress } from "~/components/ui/progress";
-import { Loader2, Send } from "lucide-react";
+import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
+import { Loader2, Send, Clock } from "lucide-react";
 import { CanvasSource, Output, WebMOutputFormat, BufferTarget } from "mediabunny";
+import type { WheelPickerOption } from "~/components/ui/wheel-picker";
 
 type TimerStyle = "countdown";
+
+// Create timer options for wheel picker
+const createArray = (length: number, add = 0): WheelPickerOption[] =>
+  Array.from({ length }, (_, i) => {
+    const value = i + add;
+    return {
+      label: value.toString(),
+      value: value.toString(), // Use simple string values
+    };
+  });
+
+const timerOptions = createArray(60, 1);
 
 export function ClientTimerGenerator() {
   const [timerSeconds, setTimerSeconds] = useState(5);
@@ -23,6 +37,21 @@ export function ClientTimerGenerator() {
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
 
+  // Handle timer value change from wheel picker
+  const handleTimerValueChange = (value: string) => {
+    console.log('🔧 Wheel picker value changed:', value);
+
+    const newTimerSeconds = parseInt(value, 10) || 1;
+    console.log('✅ Timer value updated:', {
+      stringValue: value,
+      parsedValue: newTimerSeconds,
+      previousTimerSeconds: timerSeconds
+    });
+
+    setTimerSeconds(newTimerSeconds);
+  };
+
+  
   const generateTimerClientSide = async () => {
     setIsGenerating(true);
     setProgress(0);
@@ -33,6 +62,8 @@ export function ClientTimerGenerator() {
       URL.revokeObjectURL(videoUrl);
       setVideoUrl(null);
     }
+
+    console.log('🎯 Generating timer with current state value:', timerSeconds);
 
     try {
       const startTime = performance.now();
@@ -635,21 +666,53 @@ export function ClientTimerGenerator() {
           )}
         </div>
 
-        {/* Timer Duration Input */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Timer Duration (seconds)</label>
-          <Input
-            type="number"
-            min="1"
-            max="60"
-            value={timerSeconds}
-            onChange={(e) => setTimerSeconds(Math.max(1, Math.min(60, parseInt(e.target.value) || 1)))}
-            placeholder="Enter seconds (1-60)"
-            className="w-full"
-          />
-          <p className="text-xs text-muted-foreground">
-            Timer will count down from {timerSeconds} to 0 ({timerSeconds + 1} seconds total)
-          </p>
+        {/* Timer Duration Wheel Picker */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <label className="text-sm font-medium">Timer Duration</label>
+          </div>
+
+          <div className="flex justify-center">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+              <WheelPickerWrapper>
+                <WheelPicker
+                  options={timerOptions}
+                  value={timerSeconds.toString()}
+                  onValueChange={handleTimerValueChange}
+                  infinite
+                  optionItemHeight={40}
+                  classNames={{
+                    highlightWrapper:
+                      "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg border-0 rounded-lg",
+                    optionItem: "text-lg font-medium text-gray-600 dark:text-gray-400 py-2",
+                  }}
+                />
+              </WheelPickerWrapper>
+
+              {/* Debug Display */}
+              <div className="mt-4 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-xs font-mono text-yellow-800 dark:text-yellow-200">
+                  DEBUG: timerSeconds = {timerSeconds}
+                </p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  Scroll the wheel picker and watch this value change
+                </p>
+              </div>
+
+              <div className="mt-4 text-center">
+                <div className="inline-flex items-center gap-2 bg-white dark:bg-gray-800 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {timerSeconds}
+                  </span>
+                  <span className="text-sm text-muted-foreground">seconds</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Timer will count down from {timerSeconds} to 0 ({timerSeconds + 1} seconds total)
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Generate Button */}
