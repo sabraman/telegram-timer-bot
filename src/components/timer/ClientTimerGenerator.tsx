@@ -718,7 +718,7 @@ export function ClientTimerGenerator() {
       {/* Timer Selection */}
       <div className="w-full">
         <div className="text-center space-y-4">
-          <WheelPickerWrapper>
+          <WheelPickerWrapper glow={isGenerating} progress={progress}>
             <WheelPicker
               options={minuteOptions}
               value={minutes.toString()}
