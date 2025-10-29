@@ -1,6 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* HeadingNow Variable Font */
+@font-face {
+  font-family: 'HeadingNowVariable';
+  src: url('/fonts/HeadingNowVariable-Regular.ttf') format('truetype');
+  font-display: swap;
+}
 @layer base {
   :root {
     --background: 0 0% 100%;

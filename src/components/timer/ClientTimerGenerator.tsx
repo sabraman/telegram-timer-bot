@@ -7,6 +7,7 @@ import {
   Output,
   WebMOutputFormat,
 } from "mediabunny";
+import { loadFont } from "@remotion/fonts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import LottieSuccessToast from "~/components/ui/lottie-success-toast";
@@ -33,8 +34,8 @@ const createArray = (length: number, add = 0): WheelPickerOption[] =>
     };
   });
 
-// Create options for minutes (0-60) and seconds (0-59)
-const minuteOptions = createArray(61, 0); // 0-60 minutes
+// Create options for minutes (0-59) and seconds (0-59)
+const minuteOptions = createArray(60, 0); // 0-59 minutes
 const secondOptions = createArray(60, 0); // 0-59 seconds
 
 export function ClientTimerGenerator() {
@@ -55,9 +56,49 @@ export function ClientTimerGenerator() {
 
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
+  const [fontLoaded, setFontLoaded] = useState(false);
+  const [fontBufferData, setFontBufferData] = useState<ArrayBuffer | null>(null);
 
   // Haptic feedback
   const { impactOccurred, notificationOccurred } = useHapticFeedback();
+
+  // Load HeadingNow font as buffer for Web Worker transfer
+  useEffect(() => {
+    const loadHeadingNowFontBuffer = async () => {
+      try {
+        console.log("🔤 Loading HeadingNow font buffer for Web Worker transfer...");
+
+        // Method 1: Load with Remotion for main thread usage
+        await loadFont({
+          family: "HeadingNowVariable",
+          url: "/fonts/HeadingNowVariable-Regular.ttf",
+          format: "truetype",
+          weight: "100 1000",
+          stretch: "ultra-condensed",
+        });
+
+        // Method 2: Load font as ArrayBuffer for Web Worker transfer
+        const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+        if (!fontResponse.ok) {
+          throw new Error(`Failed to fetch font: ${fontResponse.status}`);
+        }
+
+        const fontBufferData = await fontResponse.arrayBuffer();
+        console.log(`✅ Font buffer loaded: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+
+        // Store original font buffer data for multiple transfers
+        setFontBufferData(fontBufferData);
+        setFontLoaded(true);
+        console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
+      } catch (error) {
+        console.error("❌ Failed to load HeadingNow font buffer:", error);
+        setFontLoaded(false);
+        setFontBufferData(null);
+      }
+    };
+
+    loadHeadingNowFontBuffer();
+  }, []);
 
   // Play unlock sound
   const playUnlockSound = () => {
@@ -425,12 +466,29 @@ export function ClientTimerGenerator() {
       // Start recording before frame generation
       mediaRecorder.start();
 
-      // Send timer generation request to worker
-      worker.postMessage({
+      // Send timer generation request to worker with font buffer
+      let fontBufferForTransfer = null;
+
+      // Create a new buffer from stored data for each transfer
+      if (fontBufferData) {
+        fontBufferForTransfer = fontBufferData.slice(0); // Create a copy
+        console.log(`🔤 Created fresh font buffer for transfer: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
+      }
+
+      const message = {
         action: "generate",
         timerSeconds: currentTimerSeconds,
         workerId,
-      });
+        fontLoaded: fontLoaded,
+        fontBuffer: fontBufferForTransfer,
+      };
+
+      // Transfer font buffer to worker for efficient memory usage
+      if (fontBufferForTransfer) {
+        worker.postMessage(message, [fontBufferForTransfer]);
+      } else {
+        worker.postMessage(message);
+      }
     } catch (error) {
       console.error("Error generating timer sticker:", error);
       alert(
