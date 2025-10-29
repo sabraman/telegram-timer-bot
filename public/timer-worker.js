@@ -27,22 +27,22 @@ self.onmessage = async function(e) {
             variationSettings: "'wght' 1000, 'wdth' 1000"
           }),
 
-          // State 2: Condensed (width 310) for 10-60 seconds
+          // State 2: Condensed (width 410) for 10-60 seconds (two digits)
           new FontFace('HeadingNowNormal', fontBuffer, {
             weight: '1000',
             stretch: 'condensed',
             style: 'normal',
             display: 'swap',
-            variationSettings: "'wght' 1000, 'wdth' 310"
+            variationSettings: "'wght' 1000, 'wdth' 410"
           }),
 
-          // State 3: Extended (width 125) for MM:SS format
+          // State 3: Extended (width 170) for MM:SS format
           new FontFace('HeadingNowExtended', fontBuffer, {
             weight: '1000',
             stretch: 'ultra-expanded',
             style: 'normal',
             display: 'swap',
-            variationSettings: "'wght' 1000, 'wdth' 125"
+            variationSettings: "'wght' 1000, 'wdth' 170"
           })
         ];
 
@@ -97,7 +97,7 @@ self.onmessage = async function(e) {
       } else {
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = seconds % 60;
-        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
       }
     }
 
@@ -110,10 +110,10 @@ self.onmessage = async function(e) {
 
       if (remainingSeconds <= 9) {
         fontName = 'HeadingNowCondensed'; // State 1: 0-9s - ultra condensed
-      } else if (remainingSeconds <= 60) {
-        fontName = 'HeadingNowNormal';    // State 2: 10-60s - condensed
+      } else if (remainingSeconds < 60) {
+        fontName = 'HeadingNowNormal';    // State 2: 10-59s - condensed
       } else {
-        fontName = 'HeadingNowExtended';  // State 3: MM:SS format - extended
+        fontName = 'HeadingNowExtended';  // State 3: >=60s (MM:SS format) - extended
       }
 
       // Use appropriate font face if registered in worker, otherwise fallback to system font

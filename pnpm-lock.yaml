@@ -54,6 +54,9 @@ importers:
       '@remotion/cli':
         specifier: ^4.0.369
         version: 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      '@remotion/fonts':
+        specifier: ^4.0.370
+        version: 4.0.370(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@remotion/player':
         specifier: ^4.0.369
         version: 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -1511,6 +1514,9 @@ packages:
     resolution: {integrity: sha512-hx+3ZHW5G+6ik/+e9UuD992yAH362oklnv3IhX7VqMgx0JkfoyDlfw+VHxUbNuBz1HaKdxIdJe8wGQtktg+UBA==}
     cpu: [x64]
     os: [win32]
+
+  '@remotion/fonts@4.0.370':
+    resolution: {integrity: sha512-tf1Dgve3kb5miGWX9QrTfL4d0R8eKuy0BVNAkB5F2OGQ9SiA7f23Y6g/qXdDR732IZtzkPjWjoWnJSadHB/eDw==}
 
   '@remotion/licensing@4.0.369':
     resolution: {integrity: sha512-DU3Wnc5eD6mtU0QQ1wwaoqNirsNcAdK0Wj5bxuE1zMTM+hmJ95NaNHjMYX8fTP+Eg1Zi8ET6/jBe9f8XpynEBw==}
@@ -3680,6 +3686,12 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
+  remotion@4.0.370:
+    resolution: {integrity: sha512-aYnGjV/L7ax7PCMwnKJpDM+uObAIUyQK47CH/hFZ6qYAbSXLJnbk08AeNQZOvsPqR/IirEcEt8Suj9jX9RC2ww==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
@@ -5221,14 +5233,14 @@ snapshots:
       '@remotion/media-parser': 4.0.369
       '@remotion/studio': 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@remotion/studio-shared': 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      css-loader: 5.2.7(webpack@5.96.1(esbuild@0.25.0))
+      css-loader: 5.2.7(webpack@5.96.1)
       esbuild: 0.25.0
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
       react-refresh: 0.9.0
       remotion: 4.0.369(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       source-map: 0.7.3
-      style-loader: 4.0.0(webpack@5.96.1(esbuild@0.25.0))
+      style-loader: 4.0.0(webpack@5.96.1)
       webpack: 5.96.1(esbuild@0.25.0)
     transitivePeerDependencies:
       - '@swc/core'
@@ -5281,6 +5293,13 @@ snapshots:
 
   '@remotion/compositor-win32-x64-msvc@4.0.369':
     optional: true
+
+  '@remotion/fonts@4.0.370(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      remotion: 4.0.370(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+    transitivePeerDependencies:
+      - react
+      - react-dom
 
   '@remotion/licensing@4.0.369': {}
 
@@ -6071,7 +6090,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@5.2.7(webpack@5.96.1(esbuild@0.25.0)):
+  css-loader@5.2.7(webpack@5.96.1):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.6)
       loader-utils: 2.0.4
@@ -7865,6 +7884,11 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
+  remotion@4.0.370(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+
   require-from-string@2.0.2: {}
 
   resolve-from@4.0.0: {}
@@ -8140,7 +8164,7 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  style-loader@4.0.0(webpack@5.96.1(esbuild@0.25.0)):
+  style-loader@4.0.0(webpack@5.96.1):
     dependencies:
       webpack: 5.96.1(esbuild@0.25.0)
 
