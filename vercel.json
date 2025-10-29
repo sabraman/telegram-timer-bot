@@ -1,17 +1,9 @@
 {
   "version": 2,
-  "name": "telegram-timer-bot",
   "buildCommand": "pnpm build",
   "devCommand": "pnpm dev",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "outputDirectory": ".next",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
   "functions": {
     "src/app/api/bot/route.ts": {
       "runtime": "nodejs20.x",
