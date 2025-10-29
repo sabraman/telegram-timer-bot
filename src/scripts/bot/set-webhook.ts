@@ -1,5 +1,5 @@
 import { bot } from "~/lib/bot/bot";
-import { env } from "~/lib/env";
+import { env } from "~/lib/bot/env";
 
 /**
  * Script to set up the webhook URL for your bot
@@ -10,7 +10,8 @@ import { env } from "~/lib/env";
  */
 
 // Use the public site URL from environment variables
-const webhookUrl = `${env.NEXT_PUBLIC_SITE_URL}/api/bot`;
+const siteUrl = env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const webhookUrl = `${siteUrl}/api/bot`;
 
 async function main() {
   try {

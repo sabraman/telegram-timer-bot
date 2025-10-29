@@ -18,7 +18,11 @@
 		"check:fix": "biome check --write ./src",
 		"start": "next start",
 		"bot:poll": "node --env-file=.env.local --import tsx/esm src/scripts/bot/poll.ts",
-		"bot:set-webhook": "node --env-file=.env.local --import tsx/esm src/scripts/bot/set-webhook.ts"
+		"bot:set-webhook": "node --env-file=.env.local --import tsx/esm src/scripts/bot/set-webhook.ts",
+		"bot:set-webhook:prod": "node --env-file=.env.production.local --import tsx/esm src/scripts/bot/set-webhook.ts",
+		"bot:health-check": "node --env-file=.env.local --import tsx/esm src/scripts/bot/health-check.ts",
+		"deploy:vercel": "vercel --prod",
+		"deploy:full": "pnpm convex:deploy && pnpm deploy:vercel"
 	},
 	"dependencies": {
 		"@hookform/resolvers": "^3.10.0",
@@ -48,6 +52,7 @@
 		"convex": "^1.25.2",
 		"eruda": "^3.4.3",
 		"form-data": "^4.0.4",
+		"framer-motion": "^12.23.24",
 		"geist": "^1.4.2",
 		"gif.js": "^0.2.0",
 		"grammy": "^1.36.3",

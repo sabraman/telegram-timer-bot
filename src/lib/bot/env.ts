@@ -4,15 +4,23 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     TG_API_TOKEN: z.string().min(1),
+    CONVEX_DEPLOYMENT: z.string().min(1).optional(),
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   },
 
   /**
    * The prefix that client-side variables must have. This is enforced both at
    * a type-level and at runtime.
    */
-  clientPrefix: "PUBLIC_",
+  clientPrefix: "NEXT_PUBLIC_",
 
-  client: {},
+  client: {
+    NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_TG_APP_URL: z.string().url().optional(),
+    NEXT_PUBLIC_CONVEX_URL: z.string().url().optional(),
+    NEXT_PUBLIC_VERCEL_ENV: z.string().optional(),
+    NEXT_PUBLIC_VERCEL_URL: z.string().optional(),
+  },
 
   /**
    * What object holds the environment variables at runtime. This is usually
