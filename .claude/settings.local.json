@@ -3,7 +3,8 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:www.remotion.dev)",
-      "WebFetch(domain:mediabunny.dev)"
+      "WebFetch(domain:mediabunny.dev)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
