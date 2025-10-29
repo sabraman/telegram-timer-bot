@@ -3,10 +3,10 @@
 ## Session Tracking
 
 ### Current Session
-**Date**: 2025-10-28
+**Date**: 2025-10-29
 **Branch**: main
-**Commit**: 4a80ca1 - refactor: fix linting issues and improve code quality
-**Session Status**: 🟢 Completed - UI Enhancement & Code Quality Session
+**Commit**: 4a33c58 - feat: add smooth autoscroll to video preview when timer is generated
+**Session Status**: ✅ Completed - Timer Enhancement: Dynamic Formatting & Variable Font Typography
 
 ### Recent Development History
 - ✅ Client-side timer generator with MediaRecorder API
@@ -20,6 +20,45 @@
 - ✅ Haptic feedback and unlock sound integration
 - ✅ Sonner toast notifications
 - ✅ Code quality improvements and linting fixes
+- ✅ Animated Lottie checkmark for success feedback
+
+### Session 2025-10-29: Timer Enhancement - Dynamic Formatting & Variable Font Typography
+- ✅ **Wheel Picker Limits**: Updated minute picker from 0-60 to 0-59 (maximum 59:59)
+- ✅ **HeadingNow Variable Font**: Added font-face declaration for `HeadingNowVariable-Regular.ttf`
+- ✅ **Web Worker Font Loading**: Implemented font loading system using fetch API and FontFace constructor
+- ✅ **Dynamic Time Formatting**: Implemented `formatTime()` function with smart formatting:
+  - **>60 seconds**: MM:SS format (e.g., 1:02→1:01→1:00→0:59)
+  - **10-60 seconds**: Two digits (e.g., 60→59→58...→10)
+  - **0-9 seconds**: Single digit (e.g., 9→8→7...→0)
+- ✅ **Variable Font Control**: Created `getFontSettings()` function with dynamic states:
+  - **State 1** (0-9s): 670px size, width 1000, weight 1000
+  - **State 2** (10-60s): 670px size, width 310, weight 1000
+  - **State 3** (>60s MM:SS): 670px size, width 125, weight 1000
+- ✅ **Canvas Rendering Updates**: Integrated variable font with multiple fallback methods for `font-variation-settings`
+- ✅ **Font Variation Control**: Implemented multi-method approach for width/weight control in OffscreenCanvas:
+  - Method 1: `ctx.fontVariationSettings` (if supported)
+  - Method 2: CSS font syntax `${size}px ${weight} ${width}% FontName`
+  - Method 3: Basic weight syntax `${size}px ${weight} FontName`
+  - Method 4: Fallback to base font string
+- ✅ **Font Loading Debug**: Enhanced console logging for font variations and state changes
+- ✅ **Fallback System**: Graceful degradation to Arial Black/Arial if HeadingNow not available
+
+### Session 2025-10-29: Glowing Progress Bar Implementation & UX Enhancement
+- ✅ **GlowingProgressBar Component**: Created beautiful filling progress bar with 45° diagonal start
+- ✅ **Real Glow Effect**: Implemented box-shadow glow with hot pink accent color
+- ✅ **Smooth Animations**: 0.3s transitions with light pink gradients for visibility
+- ✅ **WheelPicker Integration**: Enhanced to accept glow and progress props
+- ✅ **State Connection**: Connected glow to `isGenerating`, progress to `progress` percentage
+- ✅ **Clean UI**: Removed demo component for production-ready interface
+- ✅ **Autoscroll Enhancement**: Added smooth scroll to video preview when generation completes
+- ✅ **Professional Workflow**: Seamless transition from generation to preview viewing
+
+### Session 2025-10-29: Technical Features Implemented
+- **Progress Bar Architecture**: CSS conic-gradient with 45° start, counter-clockwise fill
+- **Visual Design**: Light pink gradients, 3px border width, hot pink accent glow
+- **Component Props**: `glow` (boolean), `progress` (0-100), `variant` (default/white), `blur`, `animationDuration`
+- **Performance**: Non-blocking React hooks, smooth CSS transitions, efficient state management
+- **User Experience**: Automatic focus on results, no manual scrolling needed, professional animations
 
 ### Session 2025-10-28: Performance Optimizations Completed
 - ✅ **Strategy 1**: Removed artificial delays (60s → ~2s generation time)
@@ -37,7 +76,13 @@
 - **Memory**: Fully in-memory processing, no disk I/O
 
 ### Files Modified
-- `src/components/timer/ClientTimerGenerator.tsx` - Main component with UI enhancements
+- `src/components/timer/ClientTimerGenerator.tsx` - Updated wheel picker limits (0-59 minutes)
+- `src/styles/globals.css` - Added HeadingNowVariable font-face declaration
+- `public/timer-worker.js` - Enhanced with dynamic time formatting and variable font control
+- `src/components/ui/glowing-progress-bar.tsx` - Beautiful filling progress bar component
+- `src/components/ui/progress-bar-demo.tsx` - Demo component for testing
+- `src/components/ui/wheel-picker.tsx` - Enhanced with glowing progress functionality
+- `src/app/page.tsx` - Cleaned up layout, removed demo for production
 - `src/components/motion-primitives/text-shimmer.tsx` - Silver shimmer text component
 - `src/hooks/use-haptic-feedback.tsx` - Telegram haptic feedback hook
 - `src/components/slide-to-unlock.tsx` - Interactive slide component
@@ -45,7 +90,12 @@
 - `public/audio/unlock.wav` - Unlock sound effect file
 - `biome.json` - Added CSS parser configuration
 - `.eslintrc.json` - ESLint configuration for Next.js
-- `public/timer-worker.js` - Web Worker with frame caching
+- `public/timer-worker.js` - Web Worker with frame caching and variable font support
+
+### Session 2025-10-28: Lottie Checkmark Integration Completed
+- ✅ **Lottie Animation**: Replaced success toast with animated checkmark using lottie-react
+- ✅ **Enhanced Feedback**: Visual confirmation for successful Telegram sticker uploads
+- ✅ **Package Management**: Added lottie-react dependency successfully
 
 ### Session 2025-10-28: UI Enhancement & Code Quality Completed
 - ✅ **Wheel Picker Integration**: Added @ncdai/react-wheel-picker with custom styling
@@ -58,6 +108,12 @@
 - ✅ **Professional Messaging**: Language-agnostic messages without emojis
 - ✅ **Code Quality**: Fixed infinite loop, Node.js imports, and linting issues
 
+### Session 2025-10-28: Glowing Effect Development (Attempted)
+- ❌ **GlowingEffect Integration**: Attempted to add circular progress glow around wheel pickers
+- ❌ **Implementation Challenges**: Component architecture conflicts with existing wheel picker
+- ❌ **Reverted Changes**: Restored to stable state after implementation difficulties
+- 📝 **Lessons Learned**: Glowing effect requires different integration approach
+
 ### Session 2025-10-28: Performance Optimizations Completed
 - ✅ **Strategy 1**: Removed artificial delays (60s → ~2s generation time)
 - ✅ **Strategy 2**: Optimized MediaRecorder settings (75% bitrate reduction)
@@ -68,10 +124,14 @@
 
 ### Current Issues & Next Steps
 - ⚠️ **Worker Memory Issue**: Data cloning error in DedicatedWorkerGlobalScope (needs optimization)
+- ✅ **Glowing Progress Bar**: Successfully implemented with beautiful visual feedback
+- ✅ **Autoscroll Enhancement**: Added smooth scroll to video preview
 - [ ] Test performance in production environment
 - [ ] Monitor file sizes and Telegram compatibility
 - [ ] Consider additional optimizations if needed
 - [ ] Address any performance issues discovered during testing
+- [ ] Test Lottie checkmark functionality in Telegram environment
+- [ ] Explore additional UI enhancements for better user experience
 
 ---
 
@@ -91,6 +151,7 @@ This is a **Telegram Mini App** built with **Next.js** that integrates with the 
 - **Package Manager**: pnpm
 - **Code Quality**: Biome (linting/formatting)
 - **Type Safety**: TypeScript with strict configuration
+- **Animations**: Lottie React for animated checkmark feedback
 
 ### Key Directories
 
