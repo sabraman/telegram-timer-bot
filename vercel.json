@@ -6,11 +6,9 @@
   "framework": "nextjs",
   "functions": {
     "src/app/api/bot/route.ts": {
-      "runtime": "nodejs20.x",
       "maxDuration": 30
     },
     "src/app/api/send-to-telegram/route.ts": {
-      "runtime": "nodejs20.x",
       "maxDuration": 30
     }
   },
