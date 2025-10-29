@@ -7,7 +7,7 @@ export const env = createEnv({
    * isn't built with invalid env vars.
    */
   server: {
-    TG_API_TOKEN: z.string(),
+    TG_API_TOKEN: z.string().optional(),
     CONVEX_DEPLOYMENT: z.string().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
@@ -21,9 +21,9 @@ export const env = createEnv({
    */
   client: {
     // NEXT_PUBLIC_CLIENTVAR: z.string(),
-    NEXT_PUBLIC_SITE_URL: z.string().url(),
-    NEXT_PUBLIC_TG_APP_URL: z.string().url(),
-    NEXT_PUBLIC_CONVEX_URL: z.string().url(),
+    NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_TG_APP_URL: z.string().url().optional(),
+    NEXT_PUBLIC_CONVEX_URL: z.string().url().optional(),
   },
 
   /**
