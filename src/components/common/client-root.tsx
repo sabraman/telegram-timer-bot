@@ -12,8 +12,10 @@ const DynamicRoot = dynamic(() => import("./root"), {
   loading: () => <Loader />,
 });
 
-// Create Convex client
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+// Create Convex client only if URL is available
+const convex = process.env.NEXT_PUBLIC_CONVEX_URL
+  ? new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL)
+  : null;
 
 // Client wrapper component that can be imported in layout.tsx
 export function ClientRoot({
@@ -23,6 +25,20 @@ export function ClientRoot({
   children: ReactNode;
   debug?: boolean;
 }) {
+  // If no Convex URL, render without ConvexProvider (for build time)
+  if (!convex) {
+    return (
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <DynamicRoot debug={debug}>{children}</DynamicRoot>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ConvexProvider client={convex}>
       <ThemeProvider
