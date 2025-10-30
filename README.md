@@ -66,3 +66,4 @@ This starter uses [GrammyJS](https://grammy.dev/) for Telegram bot integration. 
 4. Implement custom middleware for your bot's specific needs
 
 See the GrammyJS [documentation](https://grammy.dev/guide/) for more detailed information about bot development.
+# Deployment preparation complete - ready for production
