@@ -664,7 +664,13 @@ export function ClientTimerGenerator() {
         timerSeconds: message.timerSeconds,
         fontLoaded: message.fontLoaded,
         hasFontBuffer: !!message.fontBuffer,
+        hasGeneratedFonts: !!message.generatedFonts,
         bufferSize: message.fontBuffer ? `${(message.fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+        generatedFontsSize: message.generatedFonts ? {
+          condensed: `${(message.generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB`,
+          normal: `${(message.generatedFonts.normal.byteLength / 1024).toFixed(1)} KB`,
+          extended: `${(message.generatedFonts.extended.byteLength / 1024).toFixed(1)} KB`
+        } : 'none',
         isiPhone: isiPhone || isiPad,
         isWebKit: /AppleWebKit/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
       });
