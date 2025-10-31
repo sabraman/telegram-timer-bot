@@ -1,4 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Jacquard+12&display=swap');
+/* Pre-generated static fonts for iOS compatibility */
+@font-face {
+  font-family: 'HeadingNowCondensed';
+  src: url('/fonts/generated/HeadingNowCondensed.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowNormal';
+  src: url('/fonts/generated/HeadingNowNormal.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowExtended';
+  src: url('/fonts/generated/HeadingNowExtended.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;

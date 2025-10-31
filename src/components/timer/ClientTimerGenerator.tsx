@@ -78,6 +78,50 @@ export function ClientTimerGenerator() {
   // Haptic feedback
   const { impactOccurred, notificationOccurred } = useHapticFeedback();
 
+  // Time formatting function (matches worker logic)
+  const formatTime = useCallback((seconds: number): string => {
+    if (seconds < 60) {
+      return seconds.toString(); // Keep current behavior for < 60s
+    } else {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+  }, []);
+
+  // Main thread text rendering for iOS (WebKit Web Worker font workaround)
+  const renderTimerTextInMainThread = useCallback(async (text: string, fontSize: number, fontFamily: string): Promise<ImageData> => {
+    console.log(`🍎 iOS: Rendering text "${text}" in main thread with font: ${fontFamily}`);
+
+    // Ensure font is loaded in main thread
+    await document.fonts.load(`${fontSize}px ${fontFamily}`);
+
+    // Create canvas for text rendering
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Failed to get 2D context for text rendering');
+    }
+
+    // Configure text rendering
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Clear canvas (transparent background)
+    ctx.clearRect(0, 0, 512, 512);
+
+    // Draw text
+    ctx.fillText(text, 256, 256);
+
+    console.log(`✅ iOS: Main thread text rendering completed for "${text}"`);
+    return ctx.getImageData(0, 0, 512, 512);
+  }, []);
+
   // Load HeadingNow font as buffer for Web Worker transfer
   useEffect(() => {
     const loadHeadingNowFontBuffer = async () => {
@@ -115,20 +159,22 @@ export function ClientTimerGenerator() {
       });
 
       try {
-        console.log("🔤 Loading Google Fonts Jacquard 12 for testing...");
+        console.log("🔤 Loading HeadingNow font buffer for Web Worker transfer...");
 
         // Method 1: Load with Remotion for main thread usage
         console.log("🔤 Step 1: Loading font with Remotion for main thread...");
-        // For Google Fonts test, the CSS import in globals.css should be sufficient
-        // No need for manual font loading with loadFont
-        console.log("🔤 Step 1: Google Fonts Jacquard 12 should be loaded via CSS import");
+        await loadFont({
+          family: "HeadingNowVariable",
+          url: "/fonts/HeadingNowVariable-Regular.ttf",
+          format: "truetype",
+          weight: "100 1000",
+          stretch: "ultra-condensed",
+        });
         console.log("✅ Step 1: Remotion font loading completed");
 
-        // Skip complex font loading for Google Fonts test
-        console.log("🔤 Step 2: Skipping font buffer (Google Fonts loaded by browser)");
-        // const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
-        // Skip font buffer loading for Google Fonts test
-        /*
+        // Method 2: Load font as ArrayBuffer for Web Worker transfer
+        console.log("🔤 Step 2: Fetching font as ArrayBuffer...");
+        const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
         if (!fontResponse.ok) {
           throw new Error(`Failed to fetch font: ${fontResponse.status}`);
         }
@@ -160,16 +206,67 @@ export function ClientTimerGenerator() {
         setFontBufferData(fontBufferData);
         setFontLoaded(true);
         console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
-        */
 
-        // For Google Fonts test: set font loaded directly
-        setFontLoaded(true);
-        setFontBufferData(null);
-        console.log("✅ Google Fonts Jacquard 12 loaded directly (no buffer needed)");
+        // iOS: Use pre-generated static fonts for proper width control
+        if (detectIOS()) {
+          console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
 
-        // Skip iOS static fonts for Google Fonts test
-        console.log("🧪 Testing: Skipping iOS generated fonts, using Google Fonts directly");
-        setGeneratedFonts({ condensed: null, normal: null, extended: null });
+          try {
+            // Load pre-generated static fonts
+            const fontPromises = [
+              fetch('/fonts/generated/HeadingNowCondensed.ttf'),
+              fetch('/fonts/generated/HeadingNowNormal.ttf'),
+              fetch('/fonts/generated/HeadingNowExtended.ttf')
+            ];
+
+            const fontResponses = await Promise.all(fontPromises);
+
+            // Convert to ArrayBuffers
+            const [condensedResponse, normalResponse, extendedResponse] = fontResponses;
+
+            if (!condensedResponse.ok || !normalResponse.ok || !extendedResponse.ok) {
+              throw new Error('Failed to fetch pre-generated fonts');
+            }
+
+            const [
+              condensedBuffer,
+              normalBuffer,
+              extendedBuffer
+            ] = await Promise.all([
+              condensedResponse.arrayBuffer(),
+              normalResponse.arrayBuffer(),
+              extendedResponse.arrayBuffer()
+            ]);
+
+            console.log("🍎 iOS: Loaded pre-generated fonts:", {
+              condensed: `${(condensedBuffer.byteLength / 1024).toFixed(1)} KB`,
+              normal: `${(normalBuffer.byteLength / 1024).toFixed(1)} KB`,
+              extended: `${(extendedBuffer.byteLength / 1024).toFixed(1)} KB`
+            });
+
+            // Store generated fonts for Web Worker transfer
+            setGeneratedFonts({
+              condensed: condensedBuffer,
+              normal: normalBuffer,
+              extended: extendedBuffer
+            });
+
+            console.log("✅ iOS: Pre-generated static fonts loaded for Web Worker access");
+          } catch (fontError) {
+            console.warn("⚠️ iOS: Pre-generated font loading failed:", fontError);
+            console.log("🔄 iOS: Falling back to original font buffer for Web Worker...");
+          }
+
+          console.log("🍎 iOS Device Detected - Font Loading Summary:", {
+            fontLoaded: true,
+            bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
+            isWebKit,
+            isSafari,
+            readyForWebWorker: true,
+            fontsRegisteredInMainThread: true,
+            webWorkerShouldUseMainThreadFonts: true
+          });
+        }
 
         // Original iOS code (commented out for testing):
         // iOS: Use pre-generated static fonts for proper width control
@@ -636,12 +733,42 @@ export function ClientTimerGenerator() {
       // Start recording before frame generation
       mediaRecorder.start();
 
+      // Check if we need to use iOS main thread rendering
+      const isIOS = detectIOS();
+      let preRenderedTexts: ImageData[] = null;
+
+      if (isIOS) {
+        console.log("🍎 iOS Detected: Using main thread text rendering approach");
+
+        // Pre-render all text frames in main thread for iOS
+        preRenderedTexts = [];
+        for (let frame = 0; frame < currentTimerSeconds + 1; frame++) {
+          const remainingSeconds = Math.max(0, currentTimerSeconds - frame);
+          const timeText = formatTime(remainingSeconds);
+
+          // Determine font family based on time
+          let fontFamily;
+          if (remainingSeconds <= 9) {
+            fontFamily = 'HeadingNowCondensed';
+          } else if (remainingSeconds < 60) {
+            fontFamily = 'HeadingNowNormal';
+          } else {
+            fontFamily = 'HeadingNowExtended';
+          }
+
+          const textImageData = await renderTimerTextInMainThread(timeText, 512, fontFamily);
+          preRenderedTexts.push(textImageData);
+        }
+
+        console.log(`✅ iOS: Pre-rendered ${preRenderedTexts.length} text frames in main thread`);
+      }
+
       // Send timer generation request to worker with font buffers
       let fontBufferForTransfer = null;
       let generatedFontBuffers = null;
 
-      // For iOS, use generated static fonts
-      if (detectIOS() && generatedFonts.condensed && generatedFonts.normal && generatedFonts.extended) {
+      // For non-iOS, use generated static fonts
+      if (!isIOS && generatedFonts.condensed && generatedFonts.normal && generatedFonts.extended) {
         generatedFontBuffers = {
           condensed: generatedFonts.condensed.slice(0),
           normal: generatedFonts.normal.slice(0),
@@ -666,6 +793,8 @@ export function ClientTimerGenerator() {
         fontLoaded: fontLoaded,
         fontBuffer: fontBufferForTransfer,
         generatedFonts: generatedFontBuffers,
+        preRenderedTexts: preRenderedTexts,
+        isIOS: isIOS,
         debugMode: DEBUG_MODE,
       };
 

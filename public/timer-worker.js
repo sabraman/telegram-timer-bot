@@ -1,6 +1,6 @@
 // Web Worker for timer video generation
 self.onmessage = async function(e) {
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, debugMode = false } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -33,17 +33,24 @@ self.onmessage = async function(e) {
 
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
     console.log(`🔤 Worker received font buffer: ${fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
+    console.log(`🍎 iOS Mode: ${isIOS ? 'YES' : 'NO'}`);
 
-    // Log generated fonts for iOS
-    if (generatedFonts) {
-      console.log("🍎 iOS: Worker received generated fonts:", {
+    // Log generated fonts for non-iOS
+    if (generatedFonts && !isIOS) {
+      console.log("🔤 Worker received generated fonts:", {
         condensed: generatedFonts.condensed ? `${(generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB` : 'NONE',
         normal: generatedFonts.normal ? `${(generatedFonts.normal.byteLength / 1024).toFixed(1)} KB` : 'NONE',
         extended: generatedFonts.extended ? `${(generatedFonts.extended.byteLength / 1024).toFixed(1)} KB` : 'NONE',
-        isIOS: true
+        platform: "Non-iOS (Worker Font Rendering)"
+      });
+    } else if (isIOS && preRenderedTexts) {
+      console.log("🍎 iOS Worker received pre-rendered texts:", {
+        textCount: preRenderedTexts.length,
+        approach: "Main Thread Text Rendering",
+        webKitWorkaround: "Font loading bypassed"
       });
     } else {
-      console.log("🔤 Worker received no generated fonts (non-iOS or fallback)");
+      console.log("🔤 Worker received no font data (fallback mode)");
     }
 
     // Test WebKit-specific features
@@ -73,11 +80,16 @@ self.onmessage = async function(e) {
       });
     }
 
-    // Register font faces directly in worker if buffer is available and not iOS
+    // Register font faces directly in worker if buffer is available
     let fontsRegistered = false;
 
-    // iOS: Register generated static fonts in worker
-    if (isIOS && generatedFonts && typeof FontFace !== 'undefined') {
+    // iOS: Skip font registration (using pre-rendered text approach)
+    if (isIOS && preRenderedTexts) {
+      console.log("🍎 iOS: Skipping font registration - using pre-rendered text approach");
+      fontsRegistered = true; // Set to true to bypass font rendering logic
+    }
+    // Non-iOS: Register generated static fonts in worker
+    else if (!isIOS && generatedFonts && typeof FontFace !== 'undefined') {
       console.log("🍎 iOS Detected: Registering generated static fonts in Web Worker...");
 
       try {
@@ -296,11 +308,26 @@ self.onmessage = async function(e) {
 
       let fontName;
 
-      // Use Google Fonts Jacquard 12 for all timer states (testing)
-      fontName = 'Jacquard 12';
+      if (remainingSeconds <= 9) {
+        fontName = 'HeadingNowCondensed'; // State 1: 0-9s - ultra condensed
+      } else if (remainingSeconds < 60) {
+        fontName = 'HeadingNowNormal';    // State 2: 10-59s - condensed
+      } else {
+        fontName = 'HeadingNowExtended';  // State 3: >=60s (MM:SS format) - extended
+      }
 
-      // Use appropriate font face if registered in worker, otherwise fallback to system font
-      if (fontsRegistered) {
+      // iOS: Use pre-rendered text approach (bypasses font rendering entirely)
+      if (isIOS && preRenderedTexts) {
+        // Font settings are not used for iOS since text is pre-rendered
+        console.log(`🍎 iOS: Font settings bypassed (using pre-rendered text)`);
+        return {
+          font: `${baseSize}px Arial`, // Fallback (not actually used)
+          variations: null,
+          name: 'Pre-rendered',
+          baseSize
+        };
+      } else if (fontsRegistered) {
+        // Non-iOS or non-WebKit: Use registered custom fonts
         console.log(`✅ Using worker-registered font face: ${fontName}`);
         return {
           font: `${baseSize}px ${fontName}`,
@@ -331,6 +358,20 @@ self.onmessage = async function(e) {
 
       // Clear canvas
       ctx.clearRect(0, 0, 512, 512);
+
+      // iOS: Use pre-rendered text from main thread
+      if (isIOS && preRenderedTexts && preRenderedTexts[frame]) {
+        console.log(`🍎 iOS Frame ${frame}: Using pre-rendered text for ${remainingSeconds}s`);
+
+        // Put the pre-rendered text directly onto canvas
+        ctx.putImageData(preRenderedTexts[frame], 0, 0);
+
+        // Add frame to array
+        const imageData = ctx.getImageData(0, 0, 512, 512);
+        frames.push(imageData);
+
+        continue; // Skip to next frame
+      }
 
       // Get dynamic font settings based on remaining time
       const fontSettings = getFontSettings(remainingSeconds);
