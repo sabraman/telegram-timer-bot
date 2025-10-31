@@ -115,22 +115,20 @@ export function ClientTimerGenerator() {
       });
 
       try {
-        console.log("🔤 Loading HeadingNow font buffer for Web Worker transfer...");
+        console.log("🔤 Loading Google Fonts Jacquard 12 for testing...");
 
         // Method 1: Load with Remotion for main thread usage
         console.log("🔤 Step 1: Loading font with Remotion for main thread...");
-        await loadFont({
-          family: "HeadingNowVariable",
-          url: "/fonts/HeadingNowVariable-Regular.ttf",
-          format: "truetype",
-          weight: "100 1000",
-          stretch: "ultra-condensed",
-        });
+        // For Google Fonts test, the CSS import in globals.css should be sufficient
+        // No need for manual font loading with loadFont
+        console.log("🔤 Step 1: Google Fonts Jacquard 12 should be loaded via CSS import");
         console.log("✅ Step 1: Remotion font loading completed");
 
-        // Method 2: Load font as ArrayBuffer for Web Worker transfer
-        console.log("🔤 Step 2: Fetching font as ArrayBuffer...");
-        const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+        // Skip complex font loading for Google Fonts test
+        console.log("🔤 Step 2: Skipping font buffer (Google Fonts loaded by browser)");
+        // const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+        // Skip font buffer loading for Google Fonts test
+        /*
         if (!fontResponse.ok) {
           throw new Error(`Failed to fetch font: ${fontResponse.status}`);
         }
@@ -162,8 +160,20 @@ export function ClientTimerGenerator() {
         setFontBufferData(fontBufferData);
         setFontLoaded(true);
         console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
+        */
 
+        // For Google Fonts test: set font loaded directly
+        setFontLoaded(true);
+        setFontBufferData(null);
+        console.log("✅ Google Fonts Jacquard 12 loaded directly (no buffer needed)");
+
+        // Skip iOS static fonts for Google Fonts test
+        console.log("🧪 Testing: Skipping iOS generated fonts, using Google Fonts directly");
+        setGeneratedFonts({ condensed: null, normal: null, extended: null });
+
+        // Original iOS code (commented out for testing):
         // iOS: Use pre-generated static fonts for proper width control
+        /* Commented out for Google Fonts test
         if (detectIOS()) {
           console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
 
@@ -222,7 +232,7 @@ export function ClientTimerGenerator() {
             fontsRegisteredInMainThread: true,
             webWorkerShouldUseMainThreadFonts: true
           });
-        }
+        } */
       } catch (error) {
         console.error("❌ Failed to load HeadingNow font buffer:", error);
         setFontLoaded(false);

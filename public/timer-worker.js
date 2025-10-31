@@ -296,13 +296,8 @@ self.onmessage = async function(e) {
 
       let fontName;
 
-      if (remainingSeconds <= 9) {
-        fontName = 'HeadingNowCondensed'; // State 1: 0-9s - ultra condensed
-      } else if (remainingSeconds < 60) {
-        fontName = 'HeadingNowNormal';    // State 2: 10-59s - condensed
-      } else {
-        fontName = 'HeadingNowExtended';  // State 3: >=60s (MM:SS format) - extended
-      }
+      // Use Google Fonts Jacquard 12 for all timer states (testing)
+      fontName = 'Jacquard 12';
 
       // Use appropriate font face if registered in worker, otherwise fallback to system font
       if (fontsRegistered) {
