@@ -998,7 +998,6 @@ export function ClientTimerGenerator() {
               options={minuteOptions}
               value={minutes.toString()}
               onValueChange={handleMinutesChange}
-              infinite
               classNames={{
                 highlightWrapper:
                   "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-xl rounded-r-none font-bold text-xl",
@@ -1010,7 +1009,6 @@ export function ClientTimerGenerator() {
               options={secondOptions}
               value={seconds.toString()}
               onValueChange={handleSecondsChange}
-              infinite
               classNames={{
                 highlightWrapper:
                   "bg-[#ff197c] text-white shadow-xl border-0 rounded-l-none rounded-r-xl font-bold text-xl",
