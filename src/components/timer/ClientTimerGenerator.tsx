@@ -675,21 +675,16 @@ export function ClientTimerGenerator() {
         isWebKit: /AppleWebKit/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
       });
 
-      // Transfer font buffers to worker for efficient memory usage
-      const transferList = [];
-      if (fontBufferForTransfer) {
-        transferList.push(fontBufferForTransfer);
-        console.log("🚚 Adding font buffer to transfer list");
-      }
+      // iOS: Send font buffers directly in message (WebKit transfer list limitation)
       if (generatedFontBuffers) {
-        transferList.push(generatedFontBuffers.condensed, generatedFontBuffers.normal, generatedFontBuffers.extended);
-        console.log("🍎 Adding generated font buffers to transfer list for iOS");
-      }
-
-      if (transferList.length > 0) {
-        console.log(`🚀 Transferring ${transferList.length} font buffer(s) to worker...`);
-        worker.postMessage(message, transferList);
-        console.log(`✅ Font buffer(s) transferred to worker`);
+        console.log("🍎 iOS: Embedding generated font buffers directly in message for WebKit compatibility...");
+        // Don't use transfer list for iOS - embed directly to avoid WebKit limitations
+        worker.postMessage(message);
+        console.log(`✅ iOS: Generated font buffers sent directly in message`);
+      } else if (fontBufferForTransfer) {
+        console.log("🚚 Adding font buffer to transfer list");
+        worker.postMessage(message, [fontBufferForTransfer]);
+        console.log(`✅ Font buffer transferred to worker`);
       } else {
         console.log("📤 Sending message to worker without font buffers");
         worker.postMessage(message);
