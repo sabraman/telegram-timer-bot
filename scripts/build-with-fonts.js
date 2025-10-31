@@ -7,8 +7,8 @@
  * to ensure iOS compatibility with proper font widths.
  */
 
-const { spawn } = require('child_process');
-const path = require('path');
+import { spawn } from 'child_process';
+import path from 'path';
 
 async function runCommand(command, args, description) {
   console.log(`\n🔧 ${description}...`);
@@ -62,8 +62,8 @@ async function buildWithFonts() {
 }
 
 // Run the build process
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   buildWithFonts();
 }
 
-module.exports = { buildWithFonts };
+export { buildWithFonts };
