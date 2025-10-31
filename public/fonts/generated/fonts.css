@@ -1,0 +1,27 @@
+
+/* Generated static fonts for iOS compatibility */
+/* Generated automatically by scripts/generate-fonts.js */
+
+@font-face {
+  font-family: 'HeadingNowCondensed';
+  src: url('/fonts/generated/HeadingNowCondensed.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowNormal';
+  src: url('/fonts/generated/HeadingNowNormal.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowExtended';
+  src: url('/fonts/generated/HeadingNowExtended.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}

@@ -10,6 +10,7 @@ import {
 import { loadFont } from "@remotion/fonts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { detectIOS } from "~/lib/font-generator";
 import LottieSuccessToast from "~/components/ui/lottie-success-toast";
 import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
 import {
@@ -54,10 +55,25 @@ export function ClientTimerGenerator() {
     totalFrames: number;
   } | null>(null);
 
+  // Debug mode for verbose logging (set to true for debugging iPhone issues)
+  const DEBUG_MODE = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+
+  // Debug logging function
+  const debugLog = (...args) => {
+    if (DEBUG_MODE) {
+      console.log('🐛 [DEBUG]', ...args);
+    }
+  };
+
   // Frame cache for instant regeneration (main thread)
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
   const [fontLoaded, setFontLoaded] = useState(false);
   const [fontBufferData, setFontBufferData] = useState<ArrayBuffer | null>(null);
+  const [generatedFonts, setGeneratedFonts] = useState<{
+    condensed: ArrayBuffer | null;
+    normal: ArrayBuffer | null;
+    extended: ArrayBuffer | null;
+  }>({ condensed: null, normal: null, extended: null });
 
   // Haptic feedback
   const { impactOccurred, notificationOccurred } = useHapticFeedback();
@@ -65,10 +81,44 @@ export function ClientTimerGenerator() {
   // Load HeadingNow font as buffer for Web Worker transfer
   useEffect(() => {
     const loadHeadingNowFontBuffer = async () => {
+      // Debug: Add device and browser detection
+      const userAgent = navigator.userAgent;
+      const isiPhone = /iPhone/i.test(userAgent);
+      const isiPad = /iPad/i.test(userAgent);
+      const isWebKit = /AppleWebKit/i.test(userAgent) && !/Chrome/i.test(userAgent);
+      const isSafari = /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent);
+
+      const deviceInfo = {
+        userAgent,
+        isiPhone,
+        isiPad,
+        isWebKit,
+        isSafari,
+        platform: navigator.platform,
+        vendor: navigator.vendor,
+        isIOS: isiPhone || isiPad,
+        debugMode: DEBUG_MODE
+      };
+
+      console.log("📱 Device/Browser Detection:", deviceInfo);
+      debugLog("📱 Extended Device Info:", {
+        userAgentFull: userAgent,
+        language: navigator.language,
+        cookieEnabled: navigator.cookieEnabled,
+        onLine: navigator.onLine,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory,
+        connection: navigator.connection ? {
+          effectiveType: navigator.connection.effectiveType,
+          downlink: navigator.connection.downlink
+        } : 'not available'
+      });
+
       try {
         console.log("🔤 Loading HeadingNow font buffer for Web Worker transfer...");
 
         // Method 1: Load with Remotion for main thread usage
+        console.log("🔤 Step 1: Loading font with Remotion for main thread...");
         await loadFont({
           family: "HeadingNowVariable",
           url: "/fonts/HeadingNowVariable-Regular.ttf",
@@ -76,24 +126,117 @@ export function ClientTimerGenerator() {
           weight: "100 1000",
           stretch: "ultra-condensed",
         });
+        console.log("✅ Step 1: Remotion font loading completed");
 
         // Method 2: Load font as ArrayBuffer for Web Worker transfer
+        console.log("🔤 Step 2: Fetching font as ArrayBuffer...");
         const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
         if (!fontResponse.ok) {
           throw new Error(`Failed to fetch font: ${fontResponse.status}`);
         }
 
         const fontBufferData = await fontResponse.arrayBuffer();
-        console.log(`✅ Font buffer loaded: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+        console.log(`✅ Step 2: Font buffer loaded: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+
+        // Debug: Test if FontFace API works in main thread
+        console.log("🔤 Step 3: Testing FontFace API in main thread...");
+        try {
+          const testFontFace = new FontFace(
+            "HeadingNowTest",
+            fontBufferData
+          );
+          console.log("✅ FontFace constructor works in main thread");
+
+          // Test if document.fonts.add works
+          document.fonts.add(testFontFace);
+          console.log("✅ document.fonts.add works in main thread");
+
+          // Test font loading
+          await testFontFace.load();
+          console.log("✅ FontFace.load works in main thread");
+        } catch (fontError) {
+          console.warn("⚠️ FontFace API test failed in main thread:", fontError);
+        }
 
         // Store original font buffer data for multiple transfers
         setFontBufferData(fontBufferData);
         setFontLoaded(true);
         console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
+
+        // iOS: Use pre-generated static fonts for proper width control
+        if (detectIOS()) {
+          console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
+
+          try {
+            // Load pre-generated static fonts
+            const fontPromises = [
+              fetch('/fonts/generated/HeadingNowCondensed.ttf'),
+              fetch('/fonts/generated/HeadingNowNormal.ttf'),
+              fetch('/fonts/generated/HeadingNowExtended.ttf')
+            ];
+
+            const fontResponses = await Promise.all(fontPromises);
+
+            // Convert to ArrayBuffers
+            const [condensedResponse, normalResponse, extendedResponse] = fontResponses;
+
+            if (!condensedResponse.ok || !normalResponse.ok || !extendedResponse.ok) {
+              throw new Error('Failed to fetch pre-generated fonts');
+            }
+
+            const [
+              condensedBuffer,
+              normalBuffer,
+              extendedBuffer
+            ] = await Promise.all([
+              condensedResponse.arrayBuffer(),
+              normalResponse.arrayBuffer(),
+              extendedResponse.arrayBuffer()
+            ]);
+
+            console.log("🍎 iOS: Loaded pre-generated fonts:", {
+              condensed: `${(condensedBuffer.byteLength / 1024).toFixed(1)} KB`,
+              normal: `${(normalBuffer.byteLength / 1024).toFixed(1)} KB`,
+              extended: `${(extendedBuffer.byteLength / 1024).toFixed(1)} KB`
+            });
+
+            // Store font buffers for Web Worker transfer
+            setGeneratedFonts({
+              condensed: condensedBuffer,
+              normal: normalBuffer,
+              extended: extendedBuffer
+            });
+
+            console.log("✅ iOS: Pre-generated static fonts loaded for Web Worker access");
+          } catch (fontError) {
+            console.warn("⚠️ iOS: Pre-generated font loading failed:", fontError);
+            console.log("🔄 iOS: Falling back to original font buffer for Web Worker...");
+          }
+
+          console.log("🍎 iOS Device Detected - Font Loading Summary:", {
+            fontLoaded: true,
+            bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
+            isWebKit,
+            isSafari,
+            readyForWebWorker: true,
+            fontsRegisteredInMainThread: true,
+            webWorkerShouldUseMainThreadFonts: true
+          });
+        }
       } catch (error) {
         console.error("❌ Failed to load HeadingNow font buffer:", error);
         setFontLoaded(false);
         setFontBufferData(null);
+
+        // iOS-specific error logging
+        if (isiPhone || isiPad) {
+          console.error("🍎 iOS Font Loading Failed - Debug Info:", {
+            error: error instanceof Error ? error.message : String(error),
+            isWebKit,
+            isSafari,
+            fallbackNeeded: true
+          });
+        }
       }
     };
 
@@ -306,7 +449,23 @@ export function ClientTimerGenerator() {
       };
 
       // Create Web Worker for frame generation
-      const worker = new Worker("/timer-worker.js");
+      console.log("👷 Creating Web Worker for frame generation...");
+
+      // Simple worker creation - Turbopack warnings are cosmetic, functionality works
+      const worker = new window.Worker("/timer-worker.js");
+      console.log("✅ Web Worker created successfully", { workerMethod: "Direct Worker instantiation" });
+
+      // Debug: Add iOS-specific Web Worker logging
+      const isiPhone = /iPhone/i.test(navigator.userAgent);
+      const isiPad = /iPad/i.test(navigator.userAgent);
+      if (isiPhone || isiPad) {
+        console.log("🍎 iOS Web Worker Debug Info:", {
+          workerCreated: true,
+          workerMethod: "Next.js worker import",
+          supportExpected: "Limited FontFace API in Web Worker",
+          fallbackWillBeUsed: "Likely"
+        });
+      }
 
       // Create canvas for video recording
       const canvas = document.createElement("canvas");
@@ -371,6 +530,7 @@ export function ClientTimerGenerator() {
       // Handle messages from worker
       worker.onmessage = async (e) => {
         const { type } = e.data;
+        console.log("📨 Worker message received:", { type, data: e.data });
 
         if (type === "progress") {
           updateProgress(e.data.progress);
@@ -466,11 +626,25 @@ export function ClientTimerGenerator() {
       // Start recording before frame generation
       mediaRecorder.start();
 
-      // Send timer generation request to worker with font buffer
+      // Send timer generation request to worker with font buffers
       let fontBufferForTransfer = null;
+      let generatedFontBuffers = null;
 
-      // Create a new buffer from stored data for each transfer
-      if (fontBufferData) {
+      // For iOS, use generated static fonts
+      if (detectIOS() && generatedFonts.condensed && generatedFonts.normal && generatedFonts.extended) {
+        generatedFontBuffers = {
+          condensed: generatedFonts.condensed.slice(0),
+          normal: generatedFonts.normal.slice(0),
+          extended: generatedFonts.extended.slice(0)
+        };
+        console.log(`🍎 iOS: Created fresh generated font buffers for transfer:`, {
+          condensed: `${(generatedFontBuffers.condensed.byteLength / 1024).toFixed(1)} KB`,
+          normal: `${(generatedFontBuffers.normal.byteLength / 1024).toFixed(1)} KB`,
+          extended: `${(generatedFontBuffers.extended.byteLength / 1024).toFixed(1)} KB`
+        });
+      }
+      // For non-iOS, use original font buffer
+      else if (fontBufferData) {
         fontBufferForTransfer = fontBufferData.slice(0); // Create a copy
         console.log(`🔤 Created fresh font buffer for transfer: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
       }
@@ -481,12 +655,37 @@ export function ClientTimerGenerator() {
         workerId,
         fontLoaded: fontLoaded,
         fontBuffer: fontBufferForTransfer,
+        generatedFonts: generatedFontBuffers,
+        debugMode: DEBUG_MODE,
       };
 
-      // Transfer font buffer to worker for efficient memory usage
+      console.log("📤 Sending message to worker:", {
+        action: message.action,
+        timerSeconds: message.timerSeconds,
+        fontLoaded: message.fontLoaded,
+        hasFontBuffer: !!message.fontBuffer,
+        bufferSize: message.fontBuffer ? `${(message.fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+        isiPhone: isiPhone || isiPad,
+        isWebKit: /AppleWebKit/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
+      });
+
+      // Transfer font buffers to worker for efficient memory usage
+      const transferList = [];
       if (fontBufferForTransfer) {
-        worker.postMessage(message, [fontBufferForTransfer]);
+        transferList.push(fontBufferForTransfer);
+        console.log("🚚 Adding font buffer to transfer list");
+      }
+      if (generatedFontBuffers) {
+        transferList.push(generatedFontBuffers.condensed, generatedFontBuffers.normal, generatedFontBuffers.extended);
+        console.log("🍎 Adding generated font buffers to transfer list for iOS");
+      }
+
+      if (transferList.length > 0) {
+        console.log(`🚀 Transferring ${transferList.length} font buffer(s) to worker...`);
+        worker.postMessage(message, transferList);
+        console.log(`✅ Font buffer(s) transferred to worker`);
       } else {
+        console.log("📤 Sending message to worker without font buffers");
         worker.postMessage(message);
       }
     } catch (error) {

@@ -1,12 +1,67 @@
+/* Pre-generated static fonts for iOS compatibility */
+@font-face {
+  font-family: 'HeadingNowCondensed';
+  src: url('/fonts/generated/HeadingNowCondensed.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowNormal';
+  src: url('/fonts/generated/HeadingNowNormal.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HeadingNowExtended';
+  src: url('/fonts/generated/HeadingNowExtended.ttf') format('truetype');
+  font-weight: 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* HeadingNow Variable Font */
+/* HeadingNow Variable Font - Main Thread Fallback for iPhone */
 @font-face {
   font-family: 'HeadingNowVariable';
   src: url('/fonts/HeadingNowVariable-Regular.ttf') format('truetype');
   font-display: swap;
+  font-weight: 100 1000;
+  font-stretch: ultra-condensed ultra-expanded;
+}
+
+/* Separate Font Faces for iPhone Web Worker Compatibility */
+@font-face {
+  font-family: 'HeadingNowCondensed';
+  src: url('/fonts/HeadingNowVariable-Regular.ttf') format('truetype');
+  font-display: swap;
+  font-weight: 1000;
+  font-stretch: ultra-condensed;
+  font-variation-settings: 'wght' 1000, 'wdth' 1000;
+}
+
+@font-face {
+  font-family: 'HeadingNowNormal';
+  src: url('/fonts/HeadingNowVariable-Regular.ttf') format('truetype');
+  font-display: swap;
+  font-weight: 1000;
+  font-stretch: condensed;
+  font-variation-settings: 'wght' 1000, 'wdth' 410;
+}
+
+@font-face {
+  font-family: 'HeadingNowExtended';
+  src: url('/fonts/HeadingNowVariable-Regular.ttf') format('truetype');
+  font-display: swap;
+  font-weight: 1000;
+  font-stretch: ultra-expanded;
+  font-variation-settings: 'wght' 1000, 'wdth' 170;
 }
 @layer base {
   :root {

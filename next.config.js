@@ -10,6 +10,26 @@ const config = {
 	experimental: {
 		reactCompiler: true,
 	},
+
+	// Allow localtunnel origins for development (wildcard for all subdomains)
+	allowedDevOrigins: ["https://telegram-timer-bot-228.loca.lt", "https://*.loca.lt"],
+
+	// Allow localtunnel access for development
+	async rewrites() {
+		return [
+			{
+				source: '/:path*',
+				has: [
+					{
+						type: 'header',
+						key: 'origin',
+						value: 'https://telegram-timer-bot-228.loca.lt',
+					},
+				],
+				destination: '/:path*',
+			},
+		];
+	},
 	eslint: {
 		ignoreDuringBuilds: true,
 	},
@@ -51,7 +71,7 @@ const config = {
 				headers: [
 					{
 						key: 'Cache-Control',
-						value: 'public, max-age=31536000, immutable',
+						value: process.env.NODE_ENV === 'development' ? 'no-cache, no-store, must-revalidate' : 'public, max-age=31536000, immutable',
 					},
 					{
 						key: 'Content-Type',

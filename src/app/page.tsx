@@ -1,4 +1,5 @@
 import { ClientTimerGenerator } from "~/components/timer/ClientTimerGenerator";
+import { DebugToggle } from "~/components/ui/debug-toggle";
 
 export default function HomePage() {
   return (
@@ -6,6 +7,7 @@ export default function HomePage() {
       <div className="w-full max-w-md">
         <ClientTimerGenerator />
       </div>
+      <DebugToggle />
     </main>
   );
 }

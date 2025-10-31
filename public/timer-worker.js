@@ -1,18 +1,143 @@
 // Web Worker for timer video generation
 self.onmessage = async function(e) {
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, debugMode = false } = e.data;
+
+  // Debug logging function for worker
+  const debugLog = (...args) => {
+    if (debugMode) {
+      console.log('🐛 [WORKER DEBUG]', ...args);
+    }
+  };
 
   try {
     if (action !== 'generate') {
       return; // Only handle generation, cache management is in main thread
     }
 
+    // Debug: WebKit detection in worker
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Worker Context';
+    const isWebKit = userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
+    const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
+    const isIOS = userAgent.includes('iPhone') || userAgent.includes('iPad');
+
+    console.log("👷 Worker Environment Detection:", {
+      userAgent: userAgent.substring(0, 50) + '...',
+      isWebKit,
+      isSafari,
+      isIOS,
+      inWorker: typeof self !== 'undefined',
+      hasFontFace: typeof FontFace !== 'undefined',
+      hasWorkerFonts: typeof self !== 'undefined' && typeof self.fonts !== 'undefined',
+      hasOffscreenCanvas: typeof OffscreenCanvas !== 'undefined'
+    });
+
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
     console.log(`🔤 Worker received font buffer: ${fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
 
-    // Register font faces directly in worker if buffer is available
+    // Log generated fonts for iOS
+    if (generatedFonts) {
+      console.log("🍎 iOS: Worker received generated fonts:", {
+        condensed: generatedFonts.condensed ? `${(generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB` : 'NONE',
+        normal: generatedFonts.normal ? `${(generatedFonts.normal.byteLength / 1024).toFixed(1)} KB` : 'NONE',
+        extended: generatedFonts.extended ? `${(generatedFonts.extended.byteLength / 1024).toFixed(1)} KB` : 'NONE',
+        isIOS: true
+      });
+    } else {
+      console.log("🔤 Worker received no generated fonts (non-iOS or fallback)");
+    }
+
+    // Test WebKit-specific features
+    if (isWebKit) {
+      console.log("🍎 WebKit Worker Detected - Testing FontFace API Support...");
+
+      // Test FontFace constructor
+      try {
+        const testFontFace = new FontFace('TestFont', new ArrayBuffer(100));
+        console.log("✅ FontFace constructor works in WebKit worker");
+      } catch (error) {
+        console.error("❌ FontFace constructor failed in WebKit worker:", error);
+      }
+
+      // Test self.fonts API
+      if (typeof self !== 'undefined' && self.fonts) {
+        console.log("✅ self.fonts API available in WebKit worker");
+      } else {
+        console.error("❌ self.fonts API NOT available in WebKit worker");
+      }
+
+      console.log("🍎 WebKit Worker Font Support Summary:", {
+        fontFaceConstructor: typeof FontFace !== 'undefined',
+        fontsAPI: typeof self !== 'undefined' && typeof self.fonts !== 'undefined',
+        expectsLimitedSupport: true,
+        fallbackRequired: "Likely"
+      });
+    }
+
+    // Register font faces directly in worker if buffer is available and not iOS
     let fontsRegistered = false;
-    if (fontBuffer && typeof FontFace !== 'undefined') {
+
+    // iOS: Register generated static fonts in worker
+    if (isIOS && generatedFonts && typeof FontFace !== 'undefined') {
+      console.log("🍎 iOS Detected: Registering generated static fonts in Web Worker...");
+
+      try {
+        // Create font faces from generated static fonts
+        const fontFaces = [
+          new FontFace('HeadingNowCondensed', generatedFonts.condensed, {
+            weight: '1000',
+            style: 'normal',
+            display: 'swap'
+          }),
+          new FontFace('HeadingNowNormal', generatedFonts.normal, {
+            weight: '1000',
+            variationSettings: "wdth 1000",
+            style: 'normal',
+            display: 'swap'
+          }),
+          new FontFace('HeadingNowExtended', generatedFonts.extended, {
+            weight: '1000',
+            style: 'normal',
+            display: 'swap'
+          })
+        ];
+
+        // Load and register all generated font faces
+        for (let i = 0; i < fontFaces.length; i++) {
+          const fontFace = fontFaces[i];
+          console.log(`🍎 iOS: Loading generated font ${i + 1}/${fontFaces.length}: ${fontFace.family}`);
+
+          await fontFace.load();
+          console.log(`✅ iOS: Generated font loaded: ${fontFace.family}`);
+
+          if (typeof self !== 'undefined' && self.fonts) {
+            self.fonts.add(fontFace);
+            console.log(`✅ iOS: Generated font registered in worker: ${fontFace.family}`);
+          } else {
+            console.error(`❌ iOS: self.fonts not available - cannot register: ${fontFace.family}`);
+            throw new Error('self.fonts API not available');
+          }
+        }
+
+        fontsRegistered = true;
+        console.log("✅ iOS: All generated static fonts registered successfully in Web Worker!");
+      } catch (fontError) {
+        console.error("❌ iOS: Generated font registration failed:", {
+          error: fontError.message,
+          stack: fontError.stack,
+          generatedFontsAvailable: !!generatedFonts,
+          isIOS
+        });
+        fontsRegistered = false;
+      }
+    }
+    // iOS fallback: Try to use fonts pre-registered in main thread
+    else if (isIOS) {
+      console.log("🍎 iOS Fallback: Using fonts pre-registered in main thread");
+      fontsRegistered = true; // Assume fonts are available from main thread registration
+      console.log("✅ iOS: Skipping worker font registration, using main thread fonts");
+    }
+    // Non-iOS: Register fonts in worker as usual
+    else if (fontBuffer && typeof FontFace !== 'undefined') {
       try {
         console.log("🔤 Registering font faces in Web Worker...");
 
@@ -46,21 +171,84 @@ self.onmessage = async function(e) {
           })
         ];
 
-        // Load and register all font faces
-        for (const fontFace of fontFaces) {
-          await fontFace.load();
-          self.fonts.add(fontFace);
-          console.log(`✅ Registered font face: ${fontFace.family}`);
+        // Load and register all font faces with detailed logging
+        for (let i = 0; i < fontFaces.length; i++) {
+          const fontFace = fontFaces[i];
+          console.log(`🔤 Loading font face ${i + 1}/${fontFaces.length}: ${fontFace.family}`);
+
+          try {
+            // Test font face creation
+            console.log(`🔤 FontFace object created:`, {
+              family: fontFace.family,
+              weight: fontFace.weight,
+              stretch: fontFace.stretch,
+              hasBuffer: !!fontBuffer
+            });
+
+            // Load the font face
+            console.log(`🔤 Loading font face: ${fontFace.family}...`);
+            await fontFace.load();
+            console.log(`✅ Font face loaded successfully: ${fontFace.family}`);
+
+            // Test self.fonts availability
+            if (typeof self !== 'undefined' && self.fonts) {
+              console.log(`🔤 Adding font to worker fonts: ${fontFace.family}`);
+              self.fonts.add(fontFace);
+              console.log(`✅ Font face registered in worker: ${fontFace.family}`);
+            } else {
+              console.error(`❌ self.fonts not available in worker - cannot register: ${fontFace.family}`);
+              throw new Error('self.fonts API not available');
+            }
+          } catch (error) {
+            console.error(`❌ Failed to register font face ${fontFace.family}:`, {
+              error: error.message,
+              stack: error.stack,
+              fontFace: fontFace.family,
+              step: i + 1
+            });
+
+            // WebKit-specific error logging
+            if (isWebKit) {
+              console.error("🍎 WebKit Font Registration Failed:", {
+                fontFamily: fontFace.family,
+                webKitLimitation: "FontFace API in Web Workers has limited support",
+                fallbackRequired: true,
+                errorDetails: error.message
+              });
+            }
+
+            // If any font fails, mark all as failed
+            fontsRegistered = false;
+            break;
+          }
         }
 
-        fontsRegistered = true;
-        console.log("✅ All font faces registered successfully in Web Worker!");
+        if (fontsRegistered !== false) {
+          fontsRegistered = true;
+          console.log("✅ All font faces registered successfully in Web Worker!");
+        }
       } catch (fontError) {
-        console.warn("⚠️ Failed to register font faces in worker:", fontError);
+        console.error("❌ Font registration process failed:", {
+          error: fontError.message,
+          stack: fontError.stack,
+          fontBufferAvailable: !!fontBuffer,
+          fontBufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+          isWebKit
+        });
+
         fontsRegistered = false;
       }
     } else {
-      console.log("⚠️ No font buffer available or FontFace API not supported in worker");
+      if (!isIOS) {
+        console.log("⚠️ No font buffer available or FontFace API not supported in worker");
+        console.log("🔤 Font Registration Prerequisites Check:", {
+          fontBufferAvailable: !!fontBuffer,
+          fontFaceConstructorAvailable: typeof FontFace !== 'undefined',
+          bufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+          isWebKit
+        });
+      }
+      // For iOS, fontsRegistered is already set to true above
     }
 
     // Create canvas in worker
@@ -154,26 +342,79 @@ self.onmessage = async function(e) {
 
       // Apply font settings with verification
       try {
+        console.log(`🔤 Applying font settings: ${fontSettings.font}`);
         ctx.font = fontSettings.font;
 
         // Test if font is actually applied by measuring text
-        const testMetrics = ctx.measureText('Test');
+        const testText = 'Test';
+        const testMetrics = ctx.measureText(testText);
         const expectedWidth = fontSettings.baseSize * 0.6; // Rough estimate for normal width
+
+        console.log(`🔤 Font Application Test:`, {
+          fontApplied: fontSettings.font,
+          testText: testText,
+          measuredWidth: testMetrics.width.toFixed(1) + 'px',
+          expectedWidth: expectedWidth.toFixed(1) + 'px',
+          widthRatio: (testMetrics.width / expectedWidth).toFixed(2),
+          fontBoundingBox: testMetrics.fontBoundingBox ? {
+            width: testMetrics.fontBoundingBox.width,
+            height: testMetrics.fontBoundingBox.height
+          } : 'not available'
+        });
 
         // If measured width is much smaller than expected, font probably didn't load
         if (testMetrics.width < expectedWidth * 0.3) {
-          console.warn(`⚠️ Font may not be applied properly (width: ${testMetrics.width.toFixed(1)}px < expected: ${expectedWidth.toFixed(1)}px)`);
+          console.warn(`⚠️ Font may not be applied properly - applying fallback`, {
+            measuredWidth: testMetrics.width.toFixed(1) + 'px',
+            expectedWidth: expectedWidth.toFixed(1) + 'px',
+            ratio: (testMetrics.width / expectedWidth).toFixed(2),
+            attemptedFont: fontSettings.font,
+            fallbackFont: `${fontSettings.baseSize}px Arial`
+          });
+
           // Try fallback
           ctx.font = `${fontSettings.baseSize}px Arial`;
           console.log(`🔧 Applied fallback font: Arial`);
+
+          // Test fallback
+          const fallbackMetrics = ctx.measureText(testText);
+          console.log(`✅ Fallback font applied:`, {
+            fallbackFont: `${fontSettings.baseSize}px Arial`,
+            fallbackWidth: fallbackMetrics.width.toFixed(1) + 'px',
+            improved: fallbackMetrics.width > testMetrics.width
+          });
         } else {
-          console.log(`✅ Applied font: ${fontSettings.font} (measured width: ${testMetrics.width.toFixed(1)}px)`);
+          console.log(`✅ Font applied successfully:`, {
+            font: fontSettings.font,
+            measuredWidth: testMetrics.width.toFixed(1) + 'px',
+            expectedWidth: expectedWidth.toFixed(1) + 'px',
+            ratio: (testMetrics.width / expectedWidth).toFixed(2),
+            fontName: fontSettings.name
+          });
+        }
+
+        // WebKit-specific font application logging
+        if (isWebKit) {
+          console.log("🍎 WebKit Font Application Summary:", {
+            attemptedFont: fontSettings.font,
+            actualFont: ctx.font,
+            fontRegistered: fontsRegistered,
+            fallbackUsed: testMetrics.width < expectedWidth * 0.3,
+            webKitIssue: fontsRegistered ? "Font registered but not applied correctly" : "Font registration failed"
+          });
         }
       } catch (e) {
-        console.log(`❌ Failed to apply font: ${e.message}`);
+        console.error(`❌ Font application failed:`, {
+          error: e.message,
+          attemptedFont: fontSettings.font,
+          fontSettings: fontSettings,
+          isWebKit,
+          fontsRegistered
+        });
+
         // Fallback to basic system font
         ctx.font = `${fontSettings.baseSize}px Arial`;
-        console.log(`🔧 Applied fallback font: Arial`);
+        console.log(`🔧 Applied emergency fallback font: Arial`);
       }
 
       // Format time based on remaining seconds

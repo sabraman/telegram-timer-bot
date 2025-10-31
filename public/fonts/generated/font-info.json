@@ -1,0 +1,26 @@
+{
+  "generated": "2025-10-31T01:21:04.814Z",
+  "fonts": [
+    {
+      "family": "HeadingNowCondensed",
+      "file": "HeadingNowCondensed.ttf",
+      "weight": 1000,
+      "width": 1000,
+      "usage": "0-9 seconds (ultra-condensed)"
+    },
+    {
+      "family": "HeadingNowNormal",
+      "file": "HeadingNowNormal.ttf",
+      "weight": 1000,
+      "width": 410,
+      "usage": "10-60 seconds (normal)"
+    },
+    {
+      "family": "HeadingNowExtended",
+      "file": "HeadingNowExtended.ttf",
+      "weight": 1000,
+      "width": 170,
+      "usage": "MM:SS format (extended)"
+    }
+  ]
+}

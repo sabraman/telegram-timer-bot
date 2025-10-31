@@ -4,7 +4,8 @@
       "WebSearch",
       "WebFetch(domain:www.remotion.dev)",
       "WebFetch(domain:mediabunny.dev)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
