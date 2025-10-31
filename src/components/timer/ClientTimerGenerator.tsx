@@ -774,16 +774,20 @@ export function ClientTimerGenerator() {
           normal: generatedFonts.normal.slice(0),
           extended: generatedFonts.extended.slice(0)
         };
-        console.log(`🍎 iOS: Created fresh generated font buffers for transfer:`, {
+        console.log(`🔤 Non-iOS: Created fresh generated font buffers for transfer:`, {
           condensed: `${(generatedFontBuffers.condensed.byteLength / 1024).toFixed(1)} KB`,
           normal: `${(generatedFontBuffers.normal.byteLength / 1024).toFixed(1)} KB`,
           extended: `${(generatedFontBuffers.extended.byteLength / 1024).toFixed(1)} KB`
         });
       }
       // For non-iOS, use original font buffer
-      else if (fontBufferData) {
+      else if (!isIOS && fontBufferData) {
         fontBufferForTransfer = fontBufferData.slice(0); // Create a copy
-        console.log(`🔤 Created fresh font buffer for transfer: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
+        console.log(`🔤 Non-iOS: Created fresh font buffer for transfer: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
+      }
+      // iOS: Don't send any font buffers - use pre-rendered text only
+      else if (isIOS) {
+        console.log(`🍎 iOS: Skipping font buffer transfer - using pre-rendered text approach`);
       }
 
       const message = {
@@ -804,6 +808,9 @@ export function ClientTimerGenerator() {
         fontLoaded: message.fontLoaded,
         hasFontBuffer: !!message.fontBuffer,
         hasGeneratedFonts: !!message.generatedFonts,
+        hasPreRenderedTexts: !!message.preRenderedTexts,
+        preRenderedTextsCount: message.preRenderedTexts ? message.preRenderedTexts.length : 0,
+        isIOS: message.isIOS,
         bufferSize: message.fontBuffer ? `${(message.fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
         generatedFontsSize: message.generatedFonts ? {
           condensed: `${(message.generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB`,
@@ -814,18 +821,21 @@ export function ClientTimerGenerator() {
         isWebKit: /AppleWebKit/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
       });
 
-      // iOS: Send font buffers directly in message (WebKit transfer list limitation)
-      if (generatedFontBuffers) {
-        console.log("🍎 iOS: Embedding generated font buffers directly in message for WebKit compatibility...");
-        // Don't use transfer list for iOS - embed directly to avoid WebKit limitations
+      // iOS: Send pre-rendered texts directly (no font buffers needed)
+      if (isIOS && preRenderedTexts) {
+        console.log("🍎 iOS: Sending message with pre-rendered texts (no font buffers)");
         worker.postMessage(message);
-        console.log(`✅ iOS: Generated font buffers sent directly in message`);
+        console.log(`✅ iOS: Pre-rendered texts sent to worker (${preRenderedTexts.length} frames)`);
+      } else if (generatedFontBuffers) {
+        console.log("🔤 Non-iOS: Embedding generated font buffers directly in message...");
+        worker.postMessage(message);
+        console.log(`✅ Non-iOS: Generated font buffers sent directly in message`);
       } else if (fontBufferForTransfer) {
         console.log("🚚 Adding font buffer to transfer list");
         worker.postMessage(message, [fontBufferForTransfer]);
         console.log(`✅ Font buffer transferred to worker`);
       } else {
-        console.log("📤 Sending message to worker without font buffers");
+        console.log("📤 Sending message to worker without font data");
         worker.postMessage(message);
       }
     } catch (error) {
