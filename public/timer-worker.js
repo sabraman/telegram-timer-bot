@@ -1,6 +1,6 @@
 // Web Worker for timer video generation
 self.onmessage = async function(e) {
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -348,11 +348,22 @@ self.onmessage = async function(e) {
       }
     }
 
-    // Generate all frames and store as ImageData
+    // Determine which frames to generate (all frames or specific subset)
+    const isPartialGeneration = framesToGenerate && Array.isArray(framesToGenerate);
     const frames = [];
     const startTime = performance.now();
 
-    for (let frame = 0; frame < totalFrames; frame++) {
+    console.log(`🎯 Worker Generation Mode:`, {
+      isPartialGeneration,
+      totalFramesRequested: isPartialGeneration ? framesToGenerate.length : totalFrames,
+      framesToGenerate: isPartialGeneration ? framesToGenerate : 'All frames'
+    });
+
+    // Generate frames (all or subset)
+    const frameIndices = isPartialGeneration ? framesToGenerate : Array.from({length: totalFrames}, (_, i) => i);
+
+    for (let i = 0; i < frameIndices.length; i++) {
+      const frame = frameIndices[i];
       const currentSecond = Math.floor(frame / fps);
       const remainingSeconds = Math.max(0, timerSeconds - currentSecond);
 
@@ -477,19 +488,21 @@ self.onmessage = async function(e) {
       frames.push(imageData);
 
       // Send progress update for every 25% to give meaningful feedback
-      const progressPercent = Math.round(((frame + 1) / totalFrames) * 100);
-      if (progressPercent % 25 === 0 || frame === totalFrames - 1) {
+      const progressPercent = Math.round(((i + 1) / frameIndices.length) * 100);
+      if (progressPercent % 25 === 0 || i === frameIndices.length - 1) {
         self.postMessage({
           type: 'progress',
           workerId,
           progress: progressPercent,
-          frame: frame + 1,
-          totalFrames
+          frame: i + 1,
+          totalFrames: frameIndices.length,
+          actualFrameNumber: frame,
+          isPartialGeneration
         });
       }
       }
 
-    console.log(`🔨 WORKER: Generated ${frames.length} frames for ${timerSeconds}s timer`);
+    console.log(`🔨 WORKER: Generated ${frames.length} frames for ${timerSeconds}s timer (${isPartialGeneration ? 'partial' : 'complete'} generation)`);
 
     // Send completed frames back to main thread
     self.postMessage({
@@ -497,8 +510,11 @@ self.onmessage = async function(e) {
       workerId,
       frames,
       timerSeconds,
-      totalFrames,
-      fromCache: false
+      totalFrames: frameIndices.length,
+      originalTotalFrames: totalFrames,
+      fromCache: false,
+      isPartialGeneration,
+      generatedFrameNumbers: frameIndices
     });
 
   } catch (error) {

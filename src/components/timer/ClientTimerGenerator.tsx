@@ -65,7 +65,11 @@ export function ClientTimerGenerator() {
     }
   };
 
-  // Frame cache for instant regeneration (main thread)
+  // Individual frame cache for incremental generation (main thread)
+  // Key: remainingSeconds, Value: ImageData for that specific second
+  const [individualFrameCache] = useState<Map<number, ImageData>>(new Map());
+
+  // Legacy complete timer cache for backward compatibility
   const [frameCache] = useState<Map<number, ImageData[]>>(new Map());
   const [fontLoaded, setFontLoaded] = useState(false);
   const [fontBufferData, setFontBufferData] = useState<ArrayBuffer | null>(null);
@@ -406,80 +410,20 @@ export function ClientTimerGenerator() {
       const totalFrames = fps * duration;
       const workerId = Date.now();
 
-      // Check main thread cache first
-      if (frameCache.has(currentTimerSeconds)) {
+      // Check incremental cache first for smart generation
+      const cacheAnalysis = analyzeFrameCache(currentTimerSeconds);
+
+      // Check if we can assemble complete timer from incremental cache
+      if (cacheAnalysis.cacheHitRate === 1.0) {
         console.log(
-          `🎯 CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`,
-        );
-        console.log(
-          `⚡ Cache hit! ${currentTimerSeconds}s timer loaded instantly`,
+          `🎯 INCREMENTAL CACHE HIT: Assembling complete ${currentTimerSeconds}s timer from individual frames`,
         );
 
-        const cachedFrames = frameCache.get(currentTimerSeconds)!;
-
-        // Create canvas for video recording
-        const canvas = document.createElement("canvas");
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext("2d", {
-          alpha: true,
-          desynchronized: true,
-          willReadFrequently: false,
-        });
-
-        if (!ctx) {
-          throw new Error("Could not get canvas context");
-        }
-
-        // Set up MediaRecorder with optimized settings
-        const stream = canvas.captureStream(30); // Higher fps for fast generation
-        const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: "video/webm;codecs=vp9",
-          videoBitsPerSecond: 500000,
-        });
-
-        const chunks: Blob[] = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            chunks.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          const endTime = performance.now();
-          const totalTime = endTime - startTime;
-          const blob = new Blob(chunks, { type: "video/webm" });
-          setVideoBlob(blob);
-          const url = URL.createObjectURL(blob);
-          setVideoUrl(url);
-
-          console.log(`✅ WebM sticker generated from cache!`, {
-            duration: `${duration}s`,
-            totalTime: `${totalTime.toFixed(2)}ms`,
-            fps: (totalFrames / (totalTime / 1000)).toFixed(1),
-            size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
-            efficiency: `${((blob.size / 1024 / totalTime) * 1000).toFixed(2)} KB/s`,
-            type: blob.type,
-            fromCache: true,
-          });
-
-          const fileSizeMB = blob.size / 1024 / 1024;
-          if (fileSizeMB > 50) {
-            alert(
-              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-            );
-          }
-
-          setIsGenerating(false);
-          setProgress(0);
-        };
-
-        // INSTANT generation with Mediabunny - like Premiere Pro!
         try {
-          console.log(
-            "🚀 Using Mediabunny with Telegram VP9 settings from cache...",
-          );
+          const cachedFrames = assembleCompleteTimer(currentTimerSeconds);
+
+          console.log(`✅ Complete timer assembled from incremental cache in ${((performance.now() - startTime).toFixed(2))}ms`);
+
           const videoBlob = await encodeFramesToVideoInstantly(
             cachedFrames,
             fps,
@@ -492,12 +436,13 @@ export function ClientTimerGenerator() {
           setVideoBlob(videoBlob);
           setVideoUrl(url);
 
-          console.log(`✅ WebM sticker generated instantly from cache!`, {
+          console.log(`✅ WebM sticker generated from incremental cache!`, {
             duration: `${duration}s`,
             totalTime: `${totalTime.toFixed(2)}ms`,
             size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
             type: videoBlob.type,
             fromCache: true,
+            cacheType: "incremental"
           });
 
           const fileSizeMB = videoBlob.size / 1024 / 1024;
@@ -511,39 +456,57 @@ export function ClientTimerGenerator() {
           setProgress(0);
           return;
         } catch (error) {
-          console.error(
-            "Mediabunny encoding failed, falling back to real-time MediaRecorder:",
-            error,
-          );
-
-          // Fallback to real-time MediaRecorder (will take longer but works)
-          if (mediaRecorder.state !== "recording") {
-            mediaRecorder.start();
-          }
-
-          let frameIndex = 0;
-          const playFrame = () => {
-            if (frameIndex >= cachedFrames.length) {
-              setTimeout(() => mediaRecorder.stop(), 200);
-              return;
-            }
-
-            ctx.putImageData(cachedFrames[frameIndex], 0, 0);
-            frameIndex++;
-
-            const progressPercent = Math.round(
-              (frameIndex / cachedFrames.length) * 100,
-            );
-            setProgress(progressPercent);
-
-            if (frameIndex < cachedFrames.length) {
-              setTimeout(playFrame, 1000);
-            }
-          };
-
-          playFrame();
-          return;
+          console.error("Failed to assemble timer from incremental cache:", error);
+          // Fall through to worker generation
         }
+      } else if (cacheAnalysis.cacheHitRate > 0) {
+        console.log(
+          `🔄 PARTIAL CACHE HIT: ${cacheAnalysis.cachedCount}/${cacheAnalysis.totalRequired} frames available (${(cacheAnalysis.cacheHitRate * 100).toFixed(1)}% cache hit rate)`,
+        );
+        console.log(
+          `⚡ Will only generate ${cacheAnalysis.needGeneration} missing frames instead of ${cacheAnalysis.totalRequired}`,
+        );
+      }
+
+      // Fall back to legacy cache check for backward compatibility
+      if (frameCache.has(currentTimerSeconds)) {
+        console.log(
+          `🎯 LEGACY CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`,
+        );
+
+        const cachedFrames = frameCache.get(currentTimerSeconds)!;
+
+        const videoBlob = await encodeFramesToVideoInstantly(
+          cachedFrames,
+          fps,
+          setProgress,
+        );
+
+        const endTime = performance.now();
+        const totalTime = endTime - startTime;
+        const url = URL.createObjectURL(videoBlob);
+        setVideoBlob(videoBlob);
+        setVideoUrl(url);
+
+        console.log(`✅ WebM sticker generated from legacy cache!`, {
+          duration: `${duration}s`,
+          totalTime: `${totalTime.toFixed(2)}ms`,
+          size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+          type: videoBlob.type,
+          fromCache: true,
+          cacheType: "legacy"
+        });
+
+        const fileSizeMB = videoBlob.size / 1024 / 1024;
+        if (fileSizeMB > 50) {
+          alert(
+            `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+          );
+        }
+
+        setIsGenerating(false);
+        setProgress(0);
+        return;
       }
 
       console.log(
@@ -642,23 +605,194 @@ export function ClientTimerGenerator() {
         if (type === "progress") {
           updateProgress(e.data.progress);
         } else if (type === "complete") {
-          console.log(
-            `🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`,
-          );
-          console.log(
-            `🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`,
-          );
+          const { isPartialGeneration, generatedFrameNumbers } = e.data;
 
-          // Cache the frames in main thread
-          frameCache.set(currentTimerSeconds, e.data.frames);
-          console.log(
-            `💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`,
-          );
+          if (isPartialGeneration) {
+            console.log(
+              `🧩 PARTIAL GENERATION: Generated ${e.data.frames.length} frames for ${currentTimerSeconds}s timer (frames: ${generatedFrameNumbers.join(', ')})`,
+            );
 
-          // Update cache info
-          updateCacheInfo();
+            // Store the newly generated individual frames
+            e.data.frames.forEach((frame: ImageData, index: number) => {
+              const frameNumber = generatedFrameNumbers[index];
+              const remainingSeconds = Math.max(0, currentTimerSeconds - frameNumber);
+              individualFrameCache.set(remainingSeconds, frame);
+            });
 
-          // INSTANT generation with Mediabunny - like Premiere Pro!
+            console.log(`💾 Stored ${e.data.frames.length} new individual frames in incremental cache`);
+
+            // Assemble complete timer from cached + new frames
+            const completeFrames = assembleCompleteTimer(currentTimerSeconds);
+
+            // Cache complete timer in legacy cache for backward compatibility
+            frameCache.set(currentTimerSeconds, completeFrames);
+            console.log(`💾 Cached complete ${currentTimerSeconds}s timer in legacy cache (${completeFrames.length} frames)`);
+
+            // Update cache info
+            updateCacheInfo();
+
+            console.log(`🔧 Assembled complete ${currentTimerSeconds}s timer from ${cacheAnalysis.cachedCount} cached + ${e.data.frames.length} new frames`);
+
+            // Encode the complete timer
+            try {
+              console.log("🚀 Using Mediabunny for instant encoding of assembled timer...");
+              const videoBlob = await encodeFramesToVideoInstantly(
+                completeFrames,
+                fps,
+                updateProgress,
+              );
+
+              const endTime = performance.now();
+              const totalTime = endTime - startTime;
+              const url = URL.createObjectURL(videoBlob);
+              setVideoBlob(videoBlob);
+              setVideoUrl(url);
+
+              console.log(`✅ WebM sticker generated from partial cache!`, {
+                duration: `${duration}s`,
+                totalTime: `${totalTime.toFixed(2)}ms`,
+                size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+                type: videoBlob.type,
+                fromCache: false,
+                cacheType: "partial-incremental",
+                cachedFrames: cacheAnalysis.cachedCount,
+                newFrames: e.data.frames.length
+              });
+
+              const fileSizeMB = videoBlob.size / 1024 / 1024;
+              if (fileSizeMB > 50) {
+                alert(
+                  `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+                );
+              }
+
+              worker.terminate();
+              setIsGenerating(false);
+              setProgress(0);
+              return;
+            } catch (error) {
+              console.error(
+                "Mediabunny failed for assembled timer, falling back to MediaRecorder:",
+                error,
+              );
+
+              // Fall back to MediaRecorder with complete frames
+              if (mediaRecorder.state !== "recording") {
+                mediaRecorder.start();
+              }
+
+              let frameIndex = 0;
+              const playFrame = () => {
+                if (frameIndex >= completeFrames.length) {
+                  setTimeout(() => mediaRecorder.stop(), 200);
+                  return;
+                }
+
+                ctx.putImageData(completeFrames[frameIndex], 0, 0);
+                frameIndex++;
+
+                const progressPercent = Math.round(
+                  (frameIndex / completeFrames.length) * 100,
+                );
+                setProgress(progressPercent);
+
+                if (frameIndex < completeFrames.length) {
+                  setTimeout(playFrame, 1000);
+                }
+              };
+
+              playFrame();
+              return;
+            }
+          } else {
+            // Full generation (existing logic)
+            console.log(
+              `🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`,
+            );
+            console.log(
+              `🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`,
+            );
+
+            // Cache the frames in main thread (legacy)
+            frameCache.set(currentTimerSeconds, e.data.frames);
+            console.log(
+              `💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`,
+            );
+
+            // Store individual frames for incremental cache
+            storeIndividualFrames(e.data.frames, currentTimerSeconds);
+
+            // Update cache info
+            updateCacheInfo();
+
+            // INSTANT generation with Mediabunny - like Premiere Pro!
+            try {
+              console.log("🚀 Using Mediabunny for instant encoding...");
+              const videoBlob = await encodeFramesToVideoInstantly(
+                e.data.frames,
+                fps,
+                updateProgress,
+              );
+
+              const endTime = performance.now();
+              const totalTime = endTime - startTime;
+              const url = URL.createObjectURL(videoBlob);
+              setVideoBlob(videoBlob);
+              setVideoUrl(url);
+
+              console.log(`✅ WebM sticker generated instantly!`, {
+                duration: `${duration}s`,
+                totalTime: `${totalTime.toFixed(2)}ms`,
+                size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+                type: videoBlob.type,
+                fromCache: false,
+              });
+
+              const fileSizeMB = videoBlob.size / 1024 / 1024;
+              if (fileSizeMB > 50) {
+                alert(
+                  `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+                );
+              }
+
+              worker.terminate();
+              setIsGenerating(false);
+              setProgress(0);
+              return;
+            } catch (error) {
+              console.error(
+                "Mediabunny failed, falling back to MediaRecorder:",
+                error,
+              );
+
+              // Fallback to MediaRecorder (will take longer but works)
+              if (mediaRecorder.state !== "recording") {
+                mediaRecorder.start();
+              }
+
+              let frameIndex = 0;
+              const playFrame = () => {
+                if (frameIndex >= e.data.frames.length) {
+                  setTimeout(() => mediaRecorder.stop(), 200);
+                  return;
+                }
+
+                ctx.putImageData(e.data.frames[frameIndex], 0, 0);
+                frameIndex++;
+
+                const progressPercent = Math.round(
+                  (frameIndex / e.data.frames.length) * 100,
+                );
+                setProgress(progressPercent);
+
+                if (frameIndex < e.data.frames.length) {
+                  setTimeout(playFrame, 1000);
+                }
+              };
+
+              playFrame();
+            }
+          }
           try {
             console.log("🚀 Using Mediabunny for instant encoding...");
             const videoBlob = await encodeFramesToVideoInstantly(
@@ -800,6 +934,7 @@ export function ClientTimerGenerator() {
         preRenderedTexts: preRenderedTexts,
         isIOS: isIOS,
         debugMode: DEBUG_MODE,
+        framesToGenerate: cacheAnalysis.needGeneration > 0 ? cacheAnalysis.framesToGenerate : undefined,
       };
 
       console.log("📤 Sending message to worker:", {
@@ -960,6 +1095,76 @@ export function ClientTimerGenerator() {
       console.error("Error getting cache info:", error);
     }
   }, [updateCacheInfo]);
+
+  // Incremental cache helper functions
+  const analyzeFrameCache = useCallback((targetDuration: number) => {
+    const frames = [];
+    const framesToGenerate = [];
+
+    // Check which frames we have and which we need to generate
+    for (let remainingSeconds = 0; remainingSeconds <= targetDuration; remainingSeconds++) {
+      if (individualFrameCache.has(remainingSeconds)) {
+        frames.push({
+          remainingSeconds,
+          frameData: individualFrameCache.get(remainingSeconds)!,
+          cached: true
+        });
+      } else {
+        framesToGenerate.push(remainingSeconds);
+      }
+    }
+
+    const cachedCount = frames.length;
+    const totalRequired = targetDuration + 1;
+    const needGeneration = framesToGenerate.length;
+
+    console.log(`🔍 Cache Analysis for ${targetDuration}s timer:`, {
+      totalRequired,
+      cached: cachedCount,
+      needGeneration,
+      cacheHitRate: `${((cachedCount / totalRequired) * 100).toFixed(1)}%`,
+      timeSaved: `${((cachedCount / totalRequired) * 100).toFixed(1)}%`
+    });
+
+    return {
+      frames,
+      framesToGenerate,
+      cachedCount,
+      needGeneration,
+      totalRequired,
+      cacheHitRate: cachedCount / totalRequired
+    };
+  }, [individualFrameCache]);
+
+  const storeIndividualFrames = useCallback((frames: ImageData[], startSeconds: number) => {
+    let storedCount = 0;
+    frames.forEach((frame, index) => {
+      const remainingSeconds = startSeconds - index;
+      if (remainingSeconds >= 0) {
+        individualFrameCache.set(remainingSeconds, frame);
+        storedCount++;
+      }
+    });
+    console.log(`💾 Stored ${storedCount} individual frames in incremental cache`);
+  }, [individualFrameCache]);
+
+  const assembleCompleteTimer = useCallback((targetDuration: number) => {
+    const completeFrames: ImageData[] = [];
+
+    // Build complete timer from highest duration down to 0
+    for (let remainingSeconds = targetDuration; remainingSeconds >= 0; remainingSeconds--) {
+      const frame = individualFrameCache.get(remainingSeconds);
+      if (frame) {
+        completeFrames.push(frame);
+      } else {
+        console.error(`❌ Missing frame for ${remainingSeconds}s in incremental cache assembly`);
+        throw new Error(`Missing frame for ${remainingSeconds}s in cache`);
+      }
+    }
+
+    console.log(`🔧 Assembled complete ${targetDuration}s timer from incremental cache (${completeFrames.length} frames)`);
+    return completeFrames;
+  }, [individualFrameCache]);
 
   const encodeFramesToVideoInstantly = async (
     frames: ImageData[],
