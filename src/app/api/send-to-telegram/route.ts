@@ -38,11 +38,14 @@ export async function POST(request: NextRequest) {
     // Extract base64 data (handle both WebM and MP4)
     let base64Data = video;
     if (video.startsWith("data:video/")) {
-      // Fixed regex to handle codecs parameter: data:video/webm;codecs=vp9;base64,
-      base64Data = video.replace(
-        /^data:video\/[^;]+(?:;[^=]+=[^;]+)*;base64,/,
-        "",
-      );
+      // Efficient string-based approach to avoid regex catastrophic backtracking on large strings
+      const base64Start = video.indexOf('base64,');
+      if (base64Start !== -1) {
+        base64Data = video.substring(base64Start + 7);
+      } else {
+        // Fallback for unexpected format
+        base64Data = video.replace(/^data:video\/[^;]+;base64,/, '');
+      }
     }
 
     // Debug: Log base64 processing
