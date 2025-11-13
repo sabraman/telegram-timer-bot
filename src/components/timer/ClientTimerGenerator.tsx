@@ -468,6 +468,56 @@ export function ClientTimerGenerator() {
         );
       }
 
+      // Check for bidirectional legacy cache (longer cached timer that contains our frames)
+      if (cacheAnalysis.legacyCacheHit) {
+        console.log(
+          `🎯 BIDIRECTIONAL CACHE HIT: Using subset from ${cacheAnalysis.legacyCacheHit.duration}s cache for ${currentTimerSeconds}s timer`,
+        );
+
+        try {
+          const cachedFrames = extractLegacyCacheSubset(cacheAnalysis.legacyCacheHit, currentTimerSeconds);
+
+          console.log(`✅ Timer extracted from bidirectional cache in ${((performance.now() - startTime).toFixed(2))}ms`);
+
+          const videoBlob = await encodeFramesToVideoInstantly(
+            cachedFrames,
+            fps,
+            setProgress,
+          );
+
+          const endTime = performance.now();
+          const totalTime = endTime - startTime;
+          const url = URL.createObjectURL(videoBlob);
+          setVideoBlob(videoBlob);
+          setVideoUrl(url);
+
+          console.log(`✅ WebM sticker generated from bidirectional cache!`, {
+            duration: `${duration}s`,
+            totalTime: `${totalTime.toFixed(2)}ms`,
+            size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+            type: videoBlob.type,
+            fromCache: true,
+            cacheType: "bidirectional-legacy",
+            sourceCache: `${cacheAnalysis.legacyCacheHit.duration}s`,
+            extractedFrames: cachedFrames.length
+          });
+
+          const fileSizeMB = videoBlob.size / 1024 / 1024;
+          if (fileSizeMB > 50) {
+            alert(
+              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
+            );
+          }
+
+          setIsGenerating(false);
+          setProgress(0);
+          return;
+        } catch (error) {
+          console.error("Failed to extract timer from bidirectional cache:", error);
+          // Fall through to worker generation
+        }
+      }
+
       // Fall back to legacy cache check for backward compatibility
       if (frameCache.has(currentTimerSeconds)) {
         console.log(
@@ -1101,7 +1151,7 @@ export function ClientTimerGenerator() {
     const frames = [];
     const framesToGenerate = [];
 
-    // Check which frames we have and which we need to generate
+    // Check individual frame cache first (bidirectional)
     for (let remainingSeconds = 0; remainingSeconds <= targetDuration; remainingSeconds++) {
       if (individualFrameCache.has(remainingSeconds)) {
         frames.push({
@@ -1118,12 +1168,17 @@ export function ClientTimerGenerator() {
     const totalRequired = targetDuration + 1;
     const needGeneration = framesToGenerate.length;
 
-    console.log(`🔍 Cache Analysis for ${targetDuration}s timer:`, {
+    // Check for bidirectional legacy cache opportunities
+    const legacyCacheHit = checkLegacyCacheSubset(targetDuration);
+
+    console.log(`🔍 Bidirectional Cache Analysis for ${targetDuration}s timer:`, {
       totalRequired,
       cached: cachedCount,
       needGeneration,
       cacheHitRate: `${((cachedCount / totalRequired) * 100).toFixed(1)}%`,
-      timeSaved: `${((cachedCount / totalRequired) * 100).toFixed(1)}%`
+      timeSaved: `${((cachedCount / totalRequired) * 100).toFixed(1)}%`,
+      individualFrameCache: `${cachedCount} frames`,
+      legacyCacheHit: legacyCacheHit ? `Yes (${legacyCacheHit.duration}s cache)` : 'No'
     });
 
     return {
@@ -1132,9 +1187,43 @@ export function ClientTimerGenerator() {
       cachedCount,
       needGeneration,
       totalRequired,
-      cacheHitRate: cachedCount / totalRequired
+      cacheHitRate: cachedCount / totalRequired,
+      legacyCacheHit
     };
   }, [individualFrameCache]);
+
+  const checkLegacyCacheSubset = useCallback((targetDuration: number) => {
+    // Find any cached timer that contains the frames we need
+    const availableCachedTimers = Array.from(frameCache.keys())
+      .filter(duration => duration >= targetDuration);
+
+    if (availableCachedTimers.length === 0) {
+      return null;
+    }
+
+    // Use the shortest cached timer that still contains our target
+    const suitableCache = Math.min(...availableCachedTimers);
+    console.log(`🎯 Found suitable legacy cache: ${suitableCache}s timer for ${targetDuration}s target`);
+
+    return {
+      duration: suitableCache,
+      sourceFrames: frameCache.get(suitableCache)!,
+      subsetStart: suitableCache - targetDuration,
+      subsetEnd: suitableCache
+    };
+  }, [frameCache]);
+
+  const extractLegacyCacheSubset = useCallback((cacheHit: any, targetDuration: number) => {
+    const { sourceFrames, subsetStart, subsetEnd } = cacheHit;
+
+    // Extract the relevant frames from the longer cached timer
+    const subset = sourceFrames.slice(subsetStart, subsetEnd + 1);
+
+    console.log(`✂️ Extracting ${subset.length} frames from ${cacheHit.duration}s cache for ${targetDuration}s timer`);
+    console.log(`📊 Subset range: frames ${subsetStart}-${subsetEnd} (total: ${subset.length})`);
+
+    return subset;
+  }, []);
 
   const storeIndividualFrames = useCallback((frames: ImageData[], startSeconds: number) => {
     let storedCount = 0;
