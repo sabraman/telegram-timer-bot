@@ -24,6 +24,19 @@ import { Progress } from "~/components/ui/progress";
 import type { WheelPickerOption } from "~/components/ui/wheel-picker";
 import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
 import { useHapticFeedback } from "~/hooks/use-haptic-feedback";
+import {
+  CANVAS_SIZE,
+  CANVAS_WIDTH,
+  CANVAS_HEIGHT,
+  BITRATE,
+  VIDEO_MIME_TYPE,
+  VIDEO_CONTAINER_TYPE,
+  VP9_CODEC,
+  LEGACY_VP9_CODEC,
+  DEFAULT_TIMER_FILENAME,
+  TIMER_FPS,
+  RECORDING_FPS,
+} from "~/constants/timer";
 
 // Create timer options for wheel picker
 const createArray = (length: number, add = 0): WheelPickerOption[] =>
@@ -102,8 +115,8 @@ export function ClientTimerGenerator() {
 
     // Create canvas for text rendering
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
@@ -117,13 +130,13 @@ export function ClientTimerGenerator() {
     ctx.textBaseline = 'middle';
 
     // Clear canvas (transparent background)
-    ctx.clearRect(0, 0, 512, 512);
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Draw text
     ctx.fillText(text, 256, 256);
 
     console.log(`✅ iOS: Main thread text rendering completed for "${text}"`);
-    return ctx.getImageData(0, 0, 512, 512);
+    return ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }, []);
 
   // Load HeadingNow font as buffer for Web Worker transfer
@@ -589,8 +602,8 @@ export function ClientTimerGenerator() {
 
       // Create canvas for video recording
       const canvas = document.createElement("canvas");
-      canvas.width = 512;
-      canvas.height = 512;
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
       const ctx = canvas.getContext("2d", {
         alpha: true,
         desynchronized: true,
@@ -602,10 +615,10 @@ export function ClientTimerGenerator() {
       }
 
       // Set up MediaRecorder with optimized settings
-      const stream = canvas.captureStream(30); // Higher fps for fast generation
+      const stream = canvas.captureStream(RECORDING_FPS); // Higher fps for fast generation
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
-        videoBitsPerSecond: 500000,
+        mimeType: VIDEO_MIME_TYPE,
+        videoBitsPerSecond: BITRATE,
       });
 
       const chunks: Blob[] = [];
@@ -620,7 +633,7 @@ export function ClientTimerGenerator() {
       mediaRecorder.onstop = () => {
         const endTime = performance.now();
         const totalTime = endTime - startTime;
-        const blob = new Blob(chunks, { type: "video/webm" });
+        const blob = new Blob(chunks, { type: VIDEO_CONTAINER_TYPE });
         setVideoBlob(blob);
         const url = URL.createObjectURL(blob);
         setVideoUrl(url);
@@ -940,7 +953,7 @@ export function ClientTimerGenerator() {
             fontFamily = 'HeadingNowExtended';
           }
 
-          const textImageData = await renderTimerTextInMainThread(timeText, 512, fontFamily);
+          const textImageData = await renderTimerTextInMainThread(timeText, CANVAS_SIZE, fontFamily);
           preRenderedTexts.push(textImageData);
         }
 
@@ -1056,7 +1069,7 @@ export function ClientTimerGenerator() {
 
             if (frameIndex === frames.length - 1) {
               // All frames encoded, create blob
-              const blob = new Blob(chunks, { type: "video/webm;codecs=vp9" });
+              const blob = new Blob(chunks, { type: VIDEO_MIME_TYPE });
               resolve(blob);
             }
           },
@@ -1067,10 +1080,10 @@ export function ClientTimerGenerator() {
 
         // Configure encoder for VP9 with transparency support (sticker format)
         encoder.configure({
-          codec: "vp09.00.10.08", // VP9 with alpha support
-          width: 512,
-          height: 512,
-          bitrate: 500000, // 500kbps
+          codec: LEGACY_VP9_CODEC, // VP9 with alpha support
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          bitrate: BITRATE, // 500kbps
           framerate: fps,
           latencyMode: "realtime",
           // Alpha channel settings for stickers
@@ -1081,11 +1094,11 @@ export function ClientTimerGenerator() {
         // Encode all frames with correct timestamps
         for (let i = 0; i < frames.length; i++) {
           // Convert ImageData to VideoFrame with alpha channel support
-          const canvas = new OffscreenCanvas(512, 512);
+          const canvas = new OffscreenCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
           const ctx = canvas.getContext("2d");
 
           // Clear canvas to ensure transparency
-          ctx.clearRect(0, 0, 512, 512);
+          ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
           // Put image data with alpha channel
           ctx.putImageData(frames[i], 0, 0);
@@ -1267,15 +1280,15 @@ export function ClientTimerGenerator() {
         );
 
         // Create canvas with transparency support
-        const canvas = new OffscreenCanvas(512, 512);
+        const canvas = new OffscreenCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
 
         // Create CanvasSource with Telegram-compatible VP9 + alpha settings
         // Using specific codec string and alpha preservation for sticker compatibility
         const canvasSource = new CanvasSource(canvas, {
           codec: "vp9",
-          bitrate: 500000, // Same bitrate as working MediaRecorder
+          bitrate: BITRATE, // Same bitrate as working MediaRecorder
           alpha: "keep", // Preserve alpha channel for Telegram stickers (like -pix_fmt yuva420p)
-          fullCodecString: "vp09.00.31.08", // VP9 codec with alpha support (similar to libvpx-vp9 settings)
+          fullCodecString: VP9_CODEC, // VP9 codec with alpha support (similar to libvpx-vp9 settings)
         });
 
         // Create Output with WebM format for Telegram compatibility
@@ -1290,9 +1303,9 @@ export function ClientTimerGenerator() {
         // Start the output pipeline
         await output.start();
 
-        // Add all frames instantly with precise 1fps timing (like Premiere Pro)
+        // Add all frames instantly with precise TIMER_FPS timing (like Premiere Pro)
         for (let i = 0; i < frames.length; i++) {
-          const timestamp = i * 1.0; // 0, 1, 2, 3... seconds for 1fps content
+          const timestamp = i * 1.0; // 0, 1, 2, 3... seconds for TIMER_FPS content
           const duration = 1.0; // Each frame lasts exactly 1 second
 
           // Draw frame to canvas with alpha channel
@@ -1302,7 +1315,7 @@ export function ClientTimerGenerator() {
           }
 
           // Clear canvas to ensure transparency
-          ctx.clearRect(0, 0, 512, 512);
+          ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
           // Draw frame with alpha channel preserved
           ctx.putImageData(frames[i], 0, 0);
@@ -1324,13 +1337,13 @@ export function ClientTimerGenerator() {
 
         // Get the buffer and create blob with correct MIME type
         const buffer = output.target.buffer;
-        const blob = new Blob([buffer], { type: "video/webm;codecs=vp9" });
+        const blob = new Blob([buffer], { type: VIDEO_MIME_TYPE });
 
         console.log(`✅ Video encoded instantly with Mediabunny!`, {
           duration: `${frames.length}s`, // 1fps = frames.length seconds
           size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
           type: blob.type,
-          fps: 1,
+          fps: TIMER_FPS,
           frameCount: frames.length,
           telegramCompatible: true,
           codec: "VP9 with alpha (vp09.00.31.08)",
@@ -1381,7 +1394,7 @@ export function ClientTimerGenerator() {
           },
           body: JSON.stringify({
             video: base64data,
-            filename: "timer-countdown.webm",
+            filename: DEFAULT_TIMER_FILENAME,
             caption: `🕐 ${minutes > 0 ? `${minutes}m ` : ""}${seconds}s countdown timer sticker - ${getTotalSeconds() + 1} seconds`,
           }),
         });

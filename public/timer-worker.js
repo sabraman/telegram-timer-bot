@@ -1,4 +1,16 @@
 // Web Worker for timer video generation
+
+// Constants - extracted from magic numbers for maintainability
+const CANVAS_SIZE = 512;
+const FONT_BASE_SIZE = 670;
+const FONT_WEIGHT_HEAVY = '1000';
+const FONT_WIDTH_ULTRA_CONDENSED = '1000'; // For 0-9 seconds
+const FONT_WIDTH_CONDENSED = '410'; // For 10-59 seconds
+const FONT_WIDTH_EXTENDED = '170'; // For MM:SS format
+const SINGLE_DIGIT_MAX = 9; // 0-9 seconds
+const TWO_DIGIT_MIN = 10; // 10-59 seconds
+const MM_SS_THRESHOLD = 60; // 60+ seconds
+
 self.onmessage = async function(e) {
   const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
@@ -96,18 +108,18 @@ self.onmessage = async function(e) {
         // Create font faces from generated static fonts
         const fontFaces = [
           new FontFace('HeadingNowCondensed', generatedFonts.condensed, {
-            weight: '1000',
+            weight: FONT_WEIGHT_HEAVY,
             style: 'normal',
             display: 'swap'
           }),
           new FontFace('HeadingNowNormal', generatedFonts.normal, {
-            weight: '1000',
-            variationSettings: "wdth 1000",
+            weight: FONT_WEIGHT_HEAVY,
+            variationSettings: "wdth " + FONT_WIDTH_ULTRA_CONDENSED,
             style: 'normal',
             display: 'swap'
           }),
           new FontFace('HeadingNowExtended', generatedFonts.extended, {
-            weight: '1000',
+            weight: FONT_WEIGHT_HEAVY,
             style: 'normal',
             display: 'swap'
           })
@@ -157,7 +169,7 @@ self.onmessage = async function(e) {
         const fontFaces = [
           // State 1: Ultra-condensed (width 1000) for 0-9 seconds
           new FontFace('HeadingNowCondensed', fontBuffer, {
-            weight: '1000',
+            weight: FONT_WEIGHT_HEAVY,
             stretch: 'ultra-condensed',
             style: 'normal',
             display: 'swap',
@@ -166,20 +178,20 @@ self.onmessage = async function(e) {
 
           // State 2: Condensed (width 410) for 10-60 seconds (two digits)
           new FontFace('HeadingNowNormal', fontBuffer, {
-            weight: '1000',
+            weight: FONT_WEIGHT_HEAVY,
             stretch: 'condensed',
             style: 'normal',
             display: 'swap',
-            variationSettings: "'wght' 1000, 'wdth' 410"
+            variationSettings: "'wght' 1000, 'wdth' " + FONT_WIDTH_CONDENSED
           }),
 
           // State 3: Extended (width 170) for MM:SS format
           new FontFace('HeadingNowExtended', fontBuffer, {
-            weight: '1000',
+            weight: FONT_WEIGHT_HEAVY,
             stretch: 'ultra-expanded',
             style: 'normal',
             display: 'swap',
-            variationSettings: "'wght' 1000, 'wdth' 170"
+            variationSettings: "'wght' 1000, 'wdth' " + FONT_WIDTH_EXTENDED
           })
         ];
 
@@ -264,7 +276,7 @@ self.onmessage = async function(e) {
     }
 
     // Create canvas in worker
-    const canvas = new OffscreenCanvas(512, 512);
+    const canvas = new OffscreenCanvas(CANVAS_SIZE, CANVAS_SIZE);
     const ctx = canvas.getContext('2d', {
       alpha: true,
       desynchronized: true,
@@ -304,13 +316,13 @@ self.onmessage = async function(e) {
     // Dynamic font settings function using separate font faces
     function getFontSettings(remainingSeconds) {
       // Use maximum font size for all states
-      const baseSize = 512; // Maximum size for all formats (full canvas height)
+      const baseSize = CANVAS_SIZE; // Maximum size for all formats (full canvas height)
 
       let fontName;
 
-      if (remainingSeconds <= 9) {
+      if (remainingSeconds <= SINGLE_DIGIT_MAX) {
         fontName = 'HeadingNowCondensed'; // State 1: 0-9s - ultra condensed
-      } else if (remainingSeconds < 60) {
+      } else if (remainingSeconds < MM_SS_THRESHOLD) {
         fontName = 'HeadingNowNormal';    // State 2: 10-59s - condensed
       } else {
         fontName = 'HeadingNowExtended';  // State 3: >=60s (MM:SS format) - extended
@@ -337,7 +349,7 @@ self.onmessage = async function(e) {
         };
       } else {
         // Fallback: Use Arial Black for bold single digits, Arial for others
-        const fallbackFont = remainingSeconds <= 9 ? 'Arial Black' : 'Arial';
+        const fallbackFont = remainingSeconds <= SINGLE_DIGIT_MAX ? 'Arial Black' : 'Arial';
         console.log(`⚠️ Using fallback font: ${fallbackFont} (fonts not registered in worker)`);
         return {
           font: `${baseSize}px ${fallbackFont}`,
@@ -368,7 +380,7 @@ self.onmessage = async function(e) {
       const remainingSeconds = Math.max(0, timerSeconds - currentSecond);
 
       // Clear canvas
-      ctx.clearRect(0, 0, 512, 512);
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
       // iOS: Use pre-rendered text from main thread
       if (isIOS && preRenderedTexts && preRenderedTexts[frame]) {
@@ -378,7 +390,7 @@ self.onmessage = async function(e) {
         ctx.putImageData(preRenderedTexts[frame], 0, 0);
 
         // Add frame to array
-        const imageData = ctx.getImageData(0, 0, 512, 512);
+        const imageData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
         frames.push(imageData);
 
         continue; // Skip to next frame
@@ -484,7 +496,7 @@ self.onmessage = async function(e) {
       ctx.fillText(timeText, centerX, centerY);
 
       // Capture frame as ImageData
-      const imageData = ctx.getImageData(0, 0, 512, 512);
+      const imageData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
       frames.push(imageData);
 
       // Send progress update for every 25% to give meaningful feedback

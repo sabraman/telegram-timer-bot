@@ -2,6 +2,15 @@ import { InputFile } from "grammy";
 import { type NextRequest, NextResponse } from "next/server";
 import { bot } from "~/lib/bot/bot";
 import { getAuth } from "~/lib/security";
+import {
+  TELEGRAM_MAX_FILE_SIZE_MB,
+  HTTP_STATUS_BAD_REQUEST,
+  HTTP_STATUS_UNAUTHORIZED,
+  HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE,
+  HTTP_STATUS_BAD_GATEWAY,
+  HTTP_STATUS_INTERNAL_SERVER_ERROR,
+  BYTES_PER_MB
+} from "~/constants/timer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (!video || !filename) {
       return NextResponse.json(
         { error: "Video data and filename are required" },
-        { status: 400 },
+        { status: HTTP_STATUS_BAD_REQUEST },
       );
     }
 
@@ -31,7 +40,7 @@ export async function POST(request: NextRequest) {
           error:
             "User authentication required. Please open this app from Telegram.",
         },
-        { status: 401 },
+        { status: HTTP_STATUS_UNAUTHORIZED },
       );
     }
 
@@ -66,19 +75,19 @@ export async function POST(request: NextRequest) {
 
     try {
       // Check file size before attempting upload
-      const fileSizeMB = buffer.length / 1024 / 1024;
-      const maxSizeMB = 50; // Telegram's limit
+      const fileSizeMB = buffer.length / BYTES_PER_MB;
+      const maxSizeMB = TELEGRAM_MAX_FILE_SIZE_MB; // Telegram's limit
 
       if (fileSizeMB > maxSizeMB) {
         return NextResponse.json(
           {
             error: `File too large for Telegram. Your sticker is ${fileSizeMB.toFixed(1)} MB, but Telegram's limit is ${maxSizeMB} MB.`,
             size: buffer.length,
-            maxSize: maxSizeMB * 1024 * 1024,
+            maxSize: maxSizeMB * BYTES_PER_MB,
             suggestion:
               "Try generating a shorter sticker or use a lower quality setting.",
           },
-          { status: 413 },
+          { status: HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE },
         );
       }
 
@@ -102,24 +111,24 @@ export async function POST(request: NextRequest) {
       console.error("Error sending to Telegram bot:", botError);
 
       // Handle specific Telegram errors
-      if (botError.error_code === 413) {
+      if (botError.error_code === HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE) {
         return NextResponse.json(
           {
             error:
               "File too large for Telegram. Try generating a shorter sticker.",
             details: "Request Entity Too Large (413)",
           },
-          { status: 413 },
+          { status: HTTP_STATUS_REQUEST_ENTITY_TOO_LARGE },
         );
       }
 
-      if (botError.error_code === 502) {
+      if (botError.error_code === HTTP_STATUS_BAD_GATEWAY) {
         return NextResponse.json(
           {
             error: "Telegram server error. Please try again in a moment.",
             details: "Bad Gateway (502)",
           },
-          { status: 502 },
+          { status: HTTP_STATUS_BAD_GATEWAY },
         );
       }
 
@@ -133,14 +142,14 @@ export async function POST(request: NextRequest) {
           details: botError.message,
           suggestion: "The sticker file might be corrupted or still too large.",
         },
-        { status: 500 },
+        { status: HTTP_STATUS_INTERNAL_SERVER_ERROR },
       );
     }
   } catch (error) {
     console.error("Error processing video upload:", error);
     return NextResponse.json(
       { error: "Failed to process video upload" },
-      { status: 500 },
+      { status: HTTP_STATUS_INTERNAL_SERVER_ERROR },
     );
   }
 }
