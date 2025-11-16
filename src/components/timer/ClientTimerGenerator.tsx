@@ -1,12 +1,6 @@
 "use client";
 
 import { Check, Loader2, RotateCcw } from "lucide-react";
-import {
-  BufferTarget,
-  CanvasSource,
-  Output,
-  WebMOutputFormat,
-} from "mediabunny";
 import { loadFont } from "@remotion/fonts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -28,15 +22,13 @@ import {
   CANVAS_SIZE,
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
-  BITRATE,
-  VIDEO_MIME_TYPE,
-  VIDEO_CONTAINER_TYPE,
-  VP9_CODEC,
-  LEGACY_VP9_CODEC,
   DEFAULT_TIMER_FILENAME,
   TIMER_FPS,
-  RECORDING_FPS,
 } from "~/constants/timer";
+import { CacheManager } from "~/services/CacheManager";
+import { TimerGenerationService, type TimerGenerationOptions } from "~/services/TimerGenerationService";
+import { TelegramUploader, type UploadOptions } from "~/services/TelegramUploader";
+import { VideoEncoder, type EncodingOptions } from "~/services/VideoEncoder";
 
 // Create timer options for wheel picker
 const createArray = (length: number, add = 0): WheelPickerOption[] =>
@@ -94,6 +86,11 @@ export function ClientTimerGenerator() {
 
   // Haptic feedback
   const { impactOccurred, notificationOccurred } = useHapticFeedback();
+
+  // Initialize services
+  const cacheManager = new CacheManager(individualFrameCache, frameCache, DEBUG_MODE);
+  const videoEncoder = new VideoEncoder(DEBUG_MODE);
+  const telegramUploader = new TelegramUploader(DEBUG_MODE);
 
   // Time formatting function (matches worker logic)
   const formatTime = useCallback((seconds: number): string => {
@@ -409,6 +406,7 @@ export function ClientTimerGenerator() {
     setIsGenerating(true);
     setProgress(0);
 
+    // Clean up previous video
     setVideoBlob(null);
     if (videoUrl) {
       URL.revokeObjectURL(videoUrl);
@@ -423,633 +421,183 @@ export function ClientTimerGenerator() {
     });
 
     try {
-      const startTime = performance.now();
-      const fps = 1;
-      const duration = currentTimerSeconds + 1;
-      const totalFrames = fps * duration;
-      const workerId = Date.now();
+      // Check cache first for optimization
+      const cacheAnalysis = cacheManager.analyzeFrameCache(currentTimerSeconds);
 
-      // Check incremental cache first for smart generation
-      const cacheAnalysis = analyzeFrameCache(currentTimerSeconds);
-
-      // Check if we can assemble complete timer from incremental cache
+      // Try to use cache if available
       if (cacheAnalysis.cacheHitRate === 1.0) {
-        console.log(
-          `🎯 INCREMENTAL CACHE HIT: Assembling complete ${currentTimerSeconds}s timer from individual frames`,
-        );
-
-        try {
-          const cachedFrames = assembleCompleteTimer(currentTimerSeconds);
-
-          console.log(`✅ Complete timer assembled from incremental cache in ${((performance.now() - startTime).toFixed(2))}ms`);
-
-          const videoBlob = await encodeFramesToVideoInstantly(
-            cachedFrames,
-            fps,
-            setProgress,
-          );
-
-          const endTime = performance.now();
-          const totalTime = endTime - startTime;
-          const url = URL.createObjectURL(videoBlob);
-          setVideoBlob(videoBlob);
-          setVideoUrl(url);
-
-          console.log(`✅ WebM sticker generated from incremental cache!`, {
-            duration: `${duration}s`,
-            totalTime: `${totalTime.toFixed(2)}ms`,
-            size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-            type: videoBlob.type,
-            fromCache: true,
-            cacheType: "incremental"
-          });
-
-          const fileSizeMB = videoBlob.size / 1024 / 1024;
-          if (fileSizeMB > 50) {
-            alert(
-              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-            );
-          }
-
-          setIsGenerating(false);
-          setProgress(0);
-          return;
-        } catch (error) {
-          console.error("Failed to assemble timer from incremental cache:", error);
-          // Fall through to worker generation
-        }
-      } else if (cacheAnalysis.cacheHitRate > 0) {
-        console.log(
-          `🔄 PARTIAL CACHE HIT: ${cacheAnalysis.cachedCount}/${cacheAnalysis.totalRequired} frames available (${(cacheAnalysis.cacheHitRate * 100).toFixed(1)}% cache hit rate)`,
-        );
-        console.log(
-          `⚡ Will only generate ${cacheAnalysis.needGeneration} missing frames instead of ${cacheAnalysis.totalRequired}`,
-        );
-      }
-
-      // Check for bidirectional legacy cache (longer cached timer that contains our frames)
-      if (cacheAnalysis.legacyCacheHit) {
-        console.log(
-          `🎯 BIDIRECTIONAL CACHE HIT: Using subset from ${cacheAnalysis.legacyCacheHit.duration}s cache for ${currentTimerSeconds}s timer`,
-        );
-
-        try {
-          const cachedFrames = extractLegacyCacheSubset(cacheAnalysis.legacyCacheHit, currentTimerSeconds);
-
-          console.log(`✅ Timer extracted from bidirectional cache in ${((performance.now() - startTime).toFixed(2))}ms`);
-
-          const videoBlob = await encodeFramesToVideoInstantly(
-            cachedFrames,
-            fps,
-            setProgress,
-          );
-
-          const endTime = performance.now();
-          const totalTime = endTime - startTime;
-          const url = URL.createObjectURL(videoBlob);
-          setVideoBlob(videoBlob);
-          setVideoUrl(url);
-
-          console.log(`✅ WebM sticker generated from bidirectional cache!`, {
-            duration: `${duration}s`,
-            totalTime: `${totalTime.toFixed(2)}ms`,
-            size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-            type: videoBlob.type,
-            fromCache: true,
-            cacheType: "bidirectional-legacy",
-            sourceCache: `${cacheAnalysis.legacyCacheHit.duration}s`,
-            extractedFrames: cachedFrames.length
-          });
-
-          const fileSizeMB = videoBlob.size / 1024 / 1024;
-          if (fileSizeMB > 50) {
-            alert(
-              `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-            );
-          }
-
-          setIsGenerating(false);
-          setProgress(0);
-          return;
-        } catch (error) {
-          console.error("Failed to extract timer from bidirectional cache:", error);
-          // Fall through to worker generation
-        }
-      }
-
-      // Fall back to legacy cache check for backward compatibility
-      if (frameCache.has(currentTimerSeconds)) {
-        console.log(
-          `🎯 LEGACY CACHE HIT: Using cached frames for ${currentTimerSeconds}s timer`,
-        );
-
-        const cachedFrames = frameCache.get(currentTimerSeconds)!;
-
-        const videoBlob = await encodeFramesToVideoInstantly(
-          cachedFrames,
-          fps,
-          setProgress,
-        );
-
-        const endTime = performance.now();
-        const totalTime = endTime - startTime;
-        const url = URL.createObjectURL(videoBlob);
-        setVideoBlob(videoBlob);
-        setVideoUrl(url);
-
-        console.log(`✅ WebM sticker generated from legacy cache!`, {
-          duration: `${duration}s`,
-          totalTime: `${totalTime.toFixed(2)}ms`,
-          size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-          type: videoBlob.type,
-          fromCache: true,
-          cacheType: "legacy"
-        });
-
-        const fileSizeMB = videoBlob.size / 1024 / 1024;
-        if (fileSizeMB > 50) {
-          alert(
-            `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-          );
-        }
-
-        setIsGenerating(false);
-        setProgress(0);
+        console.log("🎯 INCREMENTAL CACHE HIT: Assembling complete timer from individual frames");
+        await handleCacheHit(cacheAnalysis, currentTimerSeconds);
         return;
       }
 
-      console.log(
-        `🚀 Starting ${currentTimerSeconds}s timer generation with Web Worker + MediaRecorder API...`,
-      );
-
-      // Simple progress update function
-      const updateProgress = (newProgress: number) => {
-        setProgress(newProgress);
-      };
-
-      // Create Web Worker for frame generation
-      console.log("👷 Creating Web Worker for frame generation...");
-
-      // Simple worker creation - Turbopack warnings are cosmetic, functionality works
-      const worker = new window.Worker("/timer-worker.js");
-      console.log("✅ Web Worker created successfully", { workerMethod: "Direct Worker instantiation" });
-
-      // Debug: Add iOS-specific Web Worker logging
-      const _platformAdapter = getPlatformAdapter();
-      const platformInfo = _platformAdapter.getPlatformInfo();
-      if (platformInfo.isIOS) {
-        console.log("🍎 iOS Web Worker Debug Info:", {
-          workerCreated: true,
-          workerMethod: "Next.js worker import",
-          supportExpected: "Limited FontFace API in Web Worker",
-          fallbackWillBeUsed: "Likely"
-        });
+      if (cacheAnalysis.legacyCacheHit) {
+        console.log("🎯 BIDIRECTIONAL CACHE HIT: Using subset from longer cache");
+        await handleLegacyCacheHit(cacheAnalysis.legacyCacheHit, currentTimerSeconds);
+        return;
       }
 
-      // Create canvas for video recording
-      const canvas = document.createElement("canvas");
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
-      const ctx = canvas.getContext("2d", {
-        alpha: true,
-        desynchronized: true,
-        willReadFrequently: false,
-      });
-
-      if (!ctx) {
-        throw new Error("Could not get canvas context");
+      if (cacheManager.hasLegacyCache(currentTimerSeconds)) {
+        console.log("🎯 LEGACY CACHE HIT: Using cached frames");
+        const cachedFrames = cacheManager.getLegacyCache(currentTimerSeconds)!;
+        await encodeAndSetVideo(cachedFrames, "legacy");
+        return;
       }
 
-      // Set up MediaRecorder with optimized settings
-      const stream = canvas.captureStream(RECORDING_FPS); // Higher fps for fast generation
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: VIDEO_MIME_TYPE,
-        videoBitsPerSecond: BITRATE,
-      });
+      // Generate new timer using services
+      console.log("🚀 Starting fresh timer generation with services...");
+      await generateNewTimer(currentTimerSeconds, cacheAnalysis);
 
-      const chunks: Blob[] = [];
-      const _currentFrameIndex = 0;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const endTime = performance.now();
-        const totalTime = endTime - startTime;
-        const blob = new Blob(chunks, { type: VIDEO_CONTAINER_TYPE });
-        setVideoBlob(blob);
-        const url = URL.createObjectURL(blob);
-        setVideoUrl(url);
-
-        console.log(`✅ WebM sticker generated successfully!`, {
-          duration: `${duration}s`,
-          totalTime: `${totalTime.toFixed(2)}ms`,
-          fps: (totalFrames / (totalTime / 1000)).toFixed(1),
-          size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
-          efficiency: `${((blob.size / 1024 / totalTime) * 1000).toFixed(2)} KB/s`,
-          type: blob.type,
-        });
-
-        // Check file size
-        const fileSizeMB = blob.size / 1024 / 1024;
-        if (fileSizeMB > 50) {
-          toast.warning(
-            `Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-          );
-        }
-
-        worker.terminate();
-        setIsGenerating(false);
-        setProgress(0);
-      };
-
-      // Handle messages from worker
-      worker.onmessage = async (e) => {
-        const { type } = e.data;
-        console.log("📨 Worker message received:", { type, data: e.data });
-
-        if (type === "progress") {
-          updateProgress(e.data.progress);
-        } else if (type === "complete") {
-          const { isPartialGeneration, generatedFrameNumbers } = e.data;
-
-          if (isPartialGeneration) {
-            console.log(
-              `🧩 PARTIAL GENERATION: Generated ${e.data.frames.length} frames for ${currentTimerSeconds}s timer (frames: ${generatedFrameNumbers.join(', ')})`,
-            );
-
-            // Store the newly generated individual frames
-            e.data.frames.forEach((frame: ImageData, index: number) => {
-              const frameNumber = generatedFrameNumbers[index];
-              const remainingSeconds = Math.max(0, currentTimerSeconds - frameNumber);
-              individualFrameCache.set(remainingSeconds, frame);
-            });
-
-            console.log(`💾 Stored ${e.data.frames.length} new individual frames in incremental cache`);
-
-            // Assemble complete timer from cached + new frames
-            const completeFrames = assembleCompleteTimer(currentTimerSeconds);
-
-            // Cache complete timer in legacy cache for backward compatibility
-            frameCache.set(currentTimerSeconds, completeFrames);
-            console.log(`💾 Cached complete ${currentTimerSeconds}s timer in legacy cache (${completeFrames.length} frames)`);
-
-            // Update cache info
-            updateCacheInfo();
-
-            console.log(`🔧 Assembled complete ${currentTimerSeconds}s timer from ${cacheAnalysis.cachedCount} cached + ${e.data.frames.length} new frames`);
-
-            // Encode the complete timer
-            try {
-              console.log("🚀 Using Mediabunny for instant encoding of assembled timer...");
-              const videoBlob = await encodeFramesToVideoInstantly(
-                completeFrames,
-                fps,
-                updateProgress,
-              );
-
-              const endTime = performance.now();
-              const totalTime = endTime - startTime;
-              const url = URL.createObjectURL(videoBlob);
-              setVideoBlob(videoBlob);
-              setVideoUrl(url);
-
-              console.log(`✅ WebM sticker generated from partial cache!`, {
-                duration: `${duration}s`,
-                totalTime: `${totalTime.toFixed(2)}ms`,
-                size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-                type: videoBlob.type,
-                fromCache: false,
-                cacheType: "partial-incremental",
-                cachedFrames: cacheAnalysis.cachedCount,
-                newFrames: e.data.frames.length
-              });
-
-              const fileSizeMB = videoBlob.size / 1024 / 1024;
-              if (fileSizeMB > 50) {
-                alert(
-                  `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-                );
-              }
-
-              worker.terminate();
-              setIsGenerating(false);
-              setProgress(0);
-              return;
-            } catch (error) {
-              console.error(
-                "Mediabunny failed for assembled timer, falling back to MediaRecorder:",
-                error,
-              );
-
-              // Fall back to MediaRecorder with complete frames
-              if (mediaRecorder.state !== "recording") {
-                mediaRecorder.start();
-              }
-
-              let frameIndex = 0;
-              const playFrame = () => {
-                if (frameIndex >= completeFrames.length) {
-                  setTimeout(() => mediaRecorder.stop(), 200);
-                  return;
-                }
-
-                ctx.putImageData(completeFrames[frameIndex], 0, 0);
-                frameIndex++;
-
-                const progressPercent = Math.round(
-                  (frameIndex / completeFrames.length) * 100,
-                );
-                setProgress(progressPercent);
-
-                if (frameIndex < completeFrames.length) {
-                  setTimeout(playFrame, 1000);
-                }
-              };
-
-              playFrame();
-              return;
-            }
-          } else {
-            // Full generation (existing logic)
-            console.log(
-              `🆕 FRESH FRAMES: Starting video encoding for new ${currentTimerSeconds}s timer`,
-            );
-            console.log(
-              `🔨 Generated fresh ${currentTimerSeconds}s timer (now cached)`,
-            );
-
-            // Cache the frames in main thread (legacy)
-            frameCache.set(currentTimerSeconds, e.data.frames);
-            console.log(
-              `💾 Cached frames for ${currentTimerSeconds}s timer in main thread (${e.data.frames.length} frames)`,
-            );
-
-            // Store individual frames for incremental cache
-            storeIndividualFrames(e.data.frames, currentTimerSeconds);
-
-            // Update cache info
-            updateCacheInfo();
-
-            // INSTANT generation with Mediabunny - like Premiere Pro!
-            try {
-              console.log("🚀 Using Mediabunny for instant encoding...");
-              const videoBlob = await encodeFramesToVideoInstantly(
-                e.data.frames,
-                fps,
-                updateProgress,
-              );
-
-              const endTime = performance.now();
-              const totalTime = endTime - startTime;
-              const url = URL.createObjectURL(videoBlob);
-              setVideoBlob(videoBlob);
-              setVideoUrl(url);
-
-              console.log(`✅ WebM sticker generated instantly!`, {
-                duration: `${duration}s`,
-                totalTime: `${totalTime.toFixed(2)}ms`,
-                size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-                type: videoBlob.type,
-                fromCache: false,
-              });
-
-              const fileSizeMB = videoBlob.size / 1024 / 1024;
-              if (fileSizeMB > 50) {
-                alert(
-                  `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-                );
-              }
-
-              worker.terminate();
-              setIsGenerating(false);
-              setProgress(0);
-              return;
-            } catch (error) {
-              console.error(
-                "Mediabunny failed, falling back to MediaRecorder:",
-                error,
-              );
-
-              // Fallback to MediaRecorder (will take longer but works)
-              if (mediaRecorder.state !== "recording") {
-                mediaRecorder.start();
-              }
-
-              let frameIndex = 0;
-              const playFrame = () => {
-                if (frameIndex >= e.data.frames.length) {
-                  setTimeout(() => mediaRecorder.stop(), 200);
-                  return;
-                }
-
-                ctx.putImageData(e.data.frames[frameIndex], 0, 0);
-                frameIndex++;
-
-                const progressPercent = Math.round(
-                  (frameIndex / e.data.frames.length) * 100,
-                );
-                setProgress(progressPercent);
-
-                if (frameIndex < e.data.frames.length) {
-                  setTimeout(playFrame, 1000);
-                }
-              };
-
-              playFrame();
-            }
-          }
-          try {
-            console.log("🚀 Using Mediabunny for instant encoding...");
-            const videoBlob = await encodeFramesToVideoInstantly(
-              e.data.frames,
-              fps,
-              updateProgress,
-            );
-
-            const endTime = performance.now();
-            const totalTime = endTime - startTime;
-            const url = URL.createObjectURL(videoBlob);
-            setVideoBlob(videoBlob);
-            setVideoUrl(url);
-
-            console.log(`✅ WebM sticker generated instantly!`, {
-              duration: `${duration}s`,
-              totalTime: `${totalTime.toFixed(2)}ms`,
-              size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
-              type: videoBlob.type,
-              fromCache: false,
-            });
-
-            const fileSizeMB = videoBlob.size / 1024 / 1024;
-            if (fileSizeMB > 50) {
-              alert(
-                `⚠️ Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`,
-              );
-            }
-
-            worker.terminate();
-            setIsGenerating(false);
-            setProgress(0);
-            return;
-          } catch (error) {
-            console.error(
-              "Mediabunny failed, falling back to MediaRecorder:",
-              error,
-            );
-
-            // Fallback to MediaRecorder (will take longer but works)
-            if (mediaRecorder.state !== "recording") {
-              mediaRecorder.start();
-            }
-
-            let frameIndex = 0;
-            const playFrame = () => {
-              if (frameIndex >= e.data.frames.length) {
-                setTimeout(() => mediaRecorder.stop(), 200);
-                return;
-              }
-
-              ctx.putImageData(e.data.frames[frameIndex], 0, 0);
-              frameIndex++;
-
-              const progressPercent = Math.round(
-                (frameIndex / e.data.frames.length) * 100,
-              );
-              updateProgress(progressPercent);
-
-              if (frameIndex < e.data.frames.length) {
-                setTimeout(playFrame, 1000);
-              }
-            };
-
-            playFrame();
-          }
-        } else if (type === "error") {
-          throw new Error(e.data.error);
-        }
-      };
-
-      // Start recording before frame generation
-      mediaRecorder.start();
-
-      // Check if we need to use iOS main thread rendering
-      const platformAdapter = getPlatformAdapter();
-      const isIOS = platformAdapter.getPlatformInfo().isIOS;
-      let preRenderedTexts: ImageData[] = null;
-
-      if (isIOS) {
-        console.log("🍎 iOS Detected: Using main thread text rendering approach");
-
-        // Pre-render all text frames in main thread for iOS
-        preRenderedTexts = [];
-        for (let frame = 0; frame < currentTimerSeconds + 1; frame++) {
-          const remainingSeconds = Math.max(0, currentTimerSeconds - frame);
-          const timeText = formatTime(remainingSeconds);
-
-          // Determine font family based on time
-          let fontFamily;
-          if (remainingSeconds <= 9) {
-            fontFamily = 'HeadingNowCondensed';
-          } else if (remainingSeconds < 60) {
-            fontFamily = 'HeadingNowNormal';
-          } else {
-            fontFamily = 'HeadingNowExtended';
-          }
-
-          const textImageData = await renderTimerTextInMainThread(timeText, CANVAS_SIZE, fontFamily);
-          preRenderedTexts.push(textImageData);
-        }
-
-        console.log(`✅ iOS: Pre-rendered ${preRenderedTexts.length} text frames in main thread`);
-      }
-
-      // Send timer generation request to worker with font buffers
-      let fontBufferForTransfer = null;
-      let generatedFontBuffers = null;
-
-      // For non-iOS, use generated static fonts
-      if (!isIOS && generatedFonts.condensed && generatedFonts.normal && generatedFonts.extended) {
-        generatedFontBuffers = {
-          condensed: generatedFonts.condensed.slice(0),
-          normal: generatedFonts.normal.slice(0),
-          extended: generatedFonts.extended.slice(0)
-        };
-        console.log(`🔤 Non-iOS: Created fresh generated font buffers for transfer:`, {
-          condensed: `${(generatedFontBuffers.condensed.byteLength / 1024).toFixed(1)} KB`,
-          normal: `${(generatedFontBuffers.normal.byteLength / 1024).toFixed(1)} KB`,
-          extended: `${(generatedFontBuffers.extended.byteLength / 1024).toFixed(1)} KB`
-        });
-      }
-      // For non-iOS, use original font buffer
-      else if (!isIOS && fontBufferData) {
-        fontBufferForTransfer = fontBufferData.slice(0); // Create a copy
-        console.log(`🔤 Non-iOS: Created fresh font buffer for transfer: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
-      }
-      // iOS: Don't send any font buffers - use pre-rendered text only
-      else if (isIOS) {
-        console.log(`🍎 iOS: Skipping font buffer transfer - using pre-rendered text approach`);
-      }
-
-      const message = {
-        action: "generate",
-        timerSeconds: currentTimerSeconds,
-        workerId,
-        fontLoaded: fontLoaded,
-        fontBuffer: fontBufferForTransfer,
-        generatedFonts: generatedFontBuffers,
-        preRenderedTexts: preRenderedTexts,
-        isIOS: isIOS,
-        debugMode: DEBUG_MODE,
-        framesToGenerate: cacheAnalysis.needGeneration > 0 ? cacheAnalysis.framesToGenerate : undefined,
-      };
-
-      console.log("📤 Sending message to worker:", {
-        action: message.action,
-        timerSeconds: message.timerSeconds,
-        fontLoaded: message.fontLoaded,
-        hasFontBuffer: !!message.fontBuffer,
-        hasGeneratedFonts: !!message.generatedFonts,
-        hasPreRenderedTexts: !!message.preRenderedTexts,
-        preRenderedTextsCount: message.preRenderedTexts ? message.preRenderedTexts.length : 0,
-        isIOS: message.isIOS,
-        bufferSize: message.fontBuffer ? `${(message.fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
-        generatedFontsSize: message.generatedFonts ? {
-          condensed: `${(message.generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB`,
-          normal: `${(message.generatedFonts.normal.byteLength / 1024).toFixed(1)} KB`,
-          extended: `${(message.generatedFonts.extended.byteLength / 1024).toFixed(1)} KB`
-        } : 'none',
-        isiPhone: platformAdapter.getPlatformInfo().isIOS && platformAdapter.getPlatformInfo().userAgent.includes('iPhone'),
-        isWebKit: platformAdapter.getPlatformInfo().isWebKit
-      });
-
-      // iOS: Send pre-rendered texts directly (no font buffers needed)
-      if (isIOS && preRenderedTexts) {
-        console.log("🍎 iOS: Sending message with pre-rendered texts (no font buffers)");
-        worker.postMessage(message);
-        console.log(`✅ iOS: Pre-rendered texts sent to worker (${preRenderedTexts.length} frames)`);
-      } else if (generatedFontBuffers) {
-        console.log("🔤 Non-iOS: Embedding generated font buffers directly in message...");
-        worker.postMessage(message);
-        console.log(`✅ Non-iOS: Generated font buffers sent directly in message`);
-      } else if (fontBufferForTransfer) {
-        console.log("🚚 Adding font buffer to transfer list");
-        worker.postMessage(message, [fontBufferForTransfer]);
-        console.log(`✅ Font buffer transferred to worker`);
-      } else {
-        console.log("📤 Sending message to worker without font data");
-        worker.postMessage(message);
-      }
     } catch (error) {
       console.error("Error generating timer sticker:", error);
-      alert(
+      toast.error(
         `Failed to generate timer sticker: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
       setIsGenerating(false);
       setProgress(0);
+    }
+  };
+
+  // Helper methods for the refactored generateTimerClientSide
+  const handleCacheHit = async (cacheAnalysis: any, currentTimerSeconds: number) => {
+    const startTime = performance.now();
+
+    try {
+      const cachedFrames = cacheManager.assembleCompleteTimer(currentTimerSeconds);
+      console.log(`✅ Complete timer assembled from incremental cache in ${((performance.now() - startTime).toFixed(2))}ms`);
+
+      await encodeAndSetVideo(cachedFrames, "incremental");
+    } catch (error) {
+      console.error("Failed to assemble timer from incremental cache:", error);
+      throw error;
+    }
+  };
+
+  const handleLegacyCacheHit = async (legacyCacheHit: any, currentTimerSeconds: number) => {
+    const startTime = performance.now();
+
+    try {
+      const cachedFrames = cacheManager.extractLegacyCacheSubset(legacyCacheHit, currentTimerSeconds);
+      console.log(`✅ Timer extracted from bidirectional cache in ${((performance.now() - startTime).toFixed(2))}ms`);
+
+      await encodeAndSetVideo(cachedFrames, "bidirectional-legacy", legacyCacheHit.duration);
+    } catch (error) {
+      console.error("Failed to extract timer from bidirectional cache:", error);
+      throw error;
+    }
+  };
+
+  const encodeAndSetVideo = async (frames: ImageData[], cacheType: string, sourceCache?: number) => {
+    const fps = TIMER_FPS;
+    const duration = frames.length;
+
+    const videoBlob = await videoEncoder.encodeFramesToVideo({
+      frames,
+      fps,
+      onProgress: setProgress,
+      debugMode: DEBUG_MODE
+    });
+
+    const endTime = performance.now();
+    const totalTime = endTime - performance.now();
+    const url = URL.createObjectURL(videoBlob);
+
+    setVideoBlob(videoBlob);
+    setVideoUrl(url);
+
+    console.log(`✅ WebM sticker generated!`, {
+      duration: `${duration}s`,
+      totalTime: `${totalTime.toFixed(2)}ms`,
+      size: `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+      type: videoBlob.type,
+      fromCache: true,
+      cacheType,
+      sourceCache: sourceCache ? `${sourceCache}s` : undefined,
+      extractedFrames: frames.length
+    });
+
+    // Check file size
+    const fileSizeMB = videoBlob.size / 1024 / 1024;
+    if (fileSizeMB > 50) {
+      toast.warning(
+        `Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`
+      );
+    }
+  };
+
+  const generateNewTimer = async (currentTimerSeconds: number, cacheAnalysis: any) => {
+    const timerGenerationService = new TimerGenerationService(DEBUG_MODE);
+
+    // Check if we need to use iOS main thread rendering
+    const platformAdapter = getPlatformAdapter();
+    const isIOS = platformAdapter.getPlatformInfo().isIOS;
+    let preRenderedTexts: ImageData[] = null;
+
+    if (isIOS) {
+      console.log("🍎 iOS Detected: Using main thread text rendering approach");
+
+      // Pre-render all text frames in main thread for iOS
+      preRenderedTexts = [];
+      for (let frame = 0; frame < currentTimerSeconds + 1; frame++) {
+        const remainingSeconds = Math.max(0, currentTimerSeconds - frame);
+        const timeText = formatTime(remainingSeconds);
+
+        // Determine font family based on time
+        let fontFamily;
+        if (remainingSeconds <= 9) {
+          fontFamily = 'HeadingNowCondensed';
+        } else if (remainingSeconds < 60) {
+          fontFamily = 'HeadingNowNormal';
+        } else {
+          fontFamily = 'HeadingNowExtended';
+        }
+
+        const textImageData = await renderTimerTextInMainThread(timeText, CANVAS_SIZE, fontFamily);
+        preRenderedTexts.push(textImageData);
+      }
+
+      console.log(`✅ iOS: Pre-rendered ${preRenderedTexts.length} text frames in main thread`);
+    }
+
+    const generationOptions: TimerGenerationOptions = {
+      totalSeconds: currentTimerSeconds,
+      onProgress: setProgress,
+      fontBufferData,
+      generatedFonts,
+      preRenderedTexts,
+      debugMode: DEBUG_MODE
+    };
+
+    try {
+      const result = await timerGenerationService.generateTimer(generationOptions);
+
+      setVideoBlob(result.videoBlob);
+      setVideoUrl(result.videoUrl);
+
+      // Cache the generated frames for future use
+      // Note: In the current implementation, frames are not returned from TimerGenerationService
+      // This would need to be enhanced for full cache functionality
+
+      console.log(`✅ WebM sticker generated!`, {
+        duration: `${currentTimerSeconds + 1}s`,
+        totalTime: `${result.totalTime.toFixed(2)}ms`,
+        size: `${(result.videoBlob.size / 1024 / 1024).toFixed(2)} MB`,
+        type: result.videoBlob.type,
+        fromCache: result.fromCache
+      });
+
+      // Check file size
+      const fileSizeMB = result.videoBlob.size / 1024 / 1024;
+      if (fileSizeMB > 50) {
+        toast.warning(
+          `Sticker is too large for Telegram (${fileSizeMB.toFixed(1)} MB). Try generating a shorter version.`
+        );
+      }
+
+    } catch (error) {
+      console.error("Timer generation service failed:", error);
+      throw error;
     }
   };
 
@@ -1373,58 +921,49 @@ export function ClientTimerGenerator() {
     impactOccurred("medium");
 
     setIsSendingToTelegram(true);
+
     try {
-      // Debug: Log blob details before conversion
-      console.log("🔍 Blob details before conversion:", {
+      console.log("🔍 Blob details before upload:", {
         size: videoBlob.size,
         type: videoBlob.type,
         isClosed: (videoBlob as { closed?: boolean }).closed || false,
       });
 
-      // Convert blob to base64 for API upload
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
+      // Validate video blob before upload
+      const validation = telegramUploader.validateVideoBlob(videoBlob);
+      if (!validation.valid) {
+        toast.error(`Invalid video: ${validation.errors.join(", ")}`);
+        return;
+      }
 
-        // Debug: Log base64 conversion results
-        console.log("🔍 Base64 conversion results:", {
-          originalBlobSize: videoBlob.size,
-          base64DataLength: base64data.length,
-          base64Prefix: `${base64data.substring(0, 50)}...`,
-          mimeType: base64data.split(";")[0]?.split(":")[1] || "unknown",
-        });
-
-        const response = await fetch("/api/send-to-telegram", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            video: base64data,
-            filename: DEFAULT_TIMER_FILENAME,
-            caption: `🕐 ${minutes > 0 ? `${minutes}m ` : ""}${seconds}s countdown timer sticker - ${getTotalSeconds() + 1} seconds`,
-          }),
-        });
-
-        if (response.ok) {
-          notificationOccurred("success");
-          setShowLottieSuccess(true);
-        } else {
-          const error = await response.json();
-          toast.error(`Failed to send to Telegram: ${error.message}`);
-        }
+      const uploadOptions: UploadOptions = {
+        videoBlob,
+        onProgress: (progress) => {
+          console.log(`📊 Upload progress: ${progress}%`);
+        },
+        debugMode: DEBUG_MODE
       };
 
-      reader.onerror = (error) => {
-        console.error("🔍 FileReader error:", error);
-        toast.error("Failed to read video file for upload");
-        setIsSendingToTelegram(false);
-      };
+      const result = await telegramUploader.uploadToTelegram(uploadOptions);
 
-      reader.readAsDataURL(videoBlob);
+      if (result.success) {
+        notificationOccurred("success");
+        setShowLottieSuccess(true);
+
+        console.log("✅ Upload completed successfully:", {
+          duration: `${result.duration}ms`,
+          fileSize: `${(result.fileSize / 1024 / 1024).toFixed(2)} MB`,
+          fileType: result.fileType
+        });
+      } else {
+        toast.error("Failed to upload to Telegram");
+      }
+
     } catch (error) {
       console.error("Error sending to Telegram:", error);
-      toast.error("Failed to send video to Telegram");
+      toast.error(
+        `Failed to send to Telegram: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setIsSendingToTelegram(false);
     }
