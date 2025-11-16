@@ -10,7 +10,7 @@ import {
 import { loadFont } from "@remotion/fonts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { detectIOS } from "~/lib/font-generator";
+import { getPlatformAdapter } from "~/adapters/platform-adapter";
 import LottieSuccessToast from "~/components/ui/lottie-success-toast";
 import { TextShimmer } from "~/components/motion-primitives/text-shimmer";
 import {
@@ -142,28 +142,32 @@ export function ClientTimerGenerator() {
   // Load HeadingNow font as buffer for Web Worker transfer
   useEffect(() => {
     const loadHeadingNowFontBuffer = async () => {
-      // Debug: Add device and browser detection
-      const userAgent = navigator.userAgent;
-      const isiPhone = /iPhone/i.test(userAgent);
-      const isiPad = /iPad/i.test(userAgent);
-      const isWebKit = /AppleWebKit/i.test(userAgent) && !/Chrome/i.test(userAgent);
-      const isSafari = /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent);
+      // Use platform adapter for unified platform detection
+      const platformAdapter = getPlatformAdapter();
+      const platformInfo = platformAdapter.getPlatformInfo();
+      const capabilities = platformAdapter.getCapabilities();
 
       const deviceInfo = {
-        userAgent,
-        isiPhone,
-        isiPad,
-        isWebKit,
-        isSafari,
+        userAgent: platformInfo.userAgent,
+        isiPhone: platformInfo.isIOS && platformInfo.userAgent.includes('iPhone'),
+        isiPad: platformInfo.isIOS && platformInfo.userAgent.includes('iPad'),
+        isWebKit: platformInfo.isWebKit,
+        isSafari: platformInfo.isSafari,
         platform: navigator.platform,
         vendor: navigator.vendor,
-        isIOS: isiPhone || isiPad,
+        isIOS: platformInfo.isIOS,
+        capabilities,
+        renderingStrategy: platformAdapter.getRenderingStrategy(),
+        requiresWorkarounds: {
+          iOS: platformAdapter.requiresIOSWorkarounds(),
+          WebKit: platformAdapter.requiresWebKitWorkarounds()
+        },
         debugMode: DEBUG_MODE
       };
 
-      console.log("📱 Device/Browser Detection:", deviceInfo);
+      console.log("📱 Platform Adapter Detection:", deviceInfo);
       debugLog("📱 Extended Device Info:", {
-        userAgentFull: userAgent,
+        userAgentFull: platformInfo.userAgent,
         language: navigator.language,
         cookieEnabled: navigator.cookieEnabled,
         onLine: navigator.onLine,
@@ -225,7 +229,7 @@ export function ClientTimerGenerator() {
         console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
 
         // iOS: Use pre-generated static fonts for proper width control
-        if (detectIOS()) {
+        if (platformInfo.isIOS) {
           console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
 
           try {
@@ -277,8 +281,8 @@ export function ClientTimerGenerator() {
           console.log("🍎 iOS Device Detected - Font Loading Summary:", {
             fontLoaded: true,
             bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
-            isWebKit,
-            isSafari,
+            isWebKit: platformInfo.isWebKit,
+            isSafari: platformInfo.isSafari,
             readyForWebWorker: true,
             fontsRegisteredInMainThread: true,
             webWorkerShouldUseMainThreadFonts: true
@@ -288,7 +292,7 @@ export function ClientTimerGenerator() {
         // Original iOS code (commented out for testing):
         // iOS: Use pre-generated static fonts for proper width control
         /* Commented out for Google Fonts test
-        if (detectIOS()) {
+        if (platformInfo.isIOS) {
           console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
 
           try {
@@ -340,8 +344,8 @@ export function ClientTimerGenerator() {
           console.log("🍎 iOS Device Detected - Font Loading Summary:", {
             fontLoaded: true,
             bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
-            isWebKit,
-            isSafari,
+            isWebKit: platformInfo.isWebKit,
+            isSafari: platformInfo.isSafari,
             readyForWebWorker: true,
             fontsRegisteredInMainThread: true,
             webWorkerShouldUseMainThreadFonts: true
@@ -353,11 +357,13 @@ export function ClientTimerGenerator() {
         setFontBufferData(null);
 
         // iOS-specific error logging
-        if (isiPhone || isiPad) {
+        const platformAdapter = getPlatformAdapter();
+        const platformInfo = platformAdapter.getPlatformInfo();
+        if (platformInfo.isIOS) {
           console.error("🍎 iOS Font Loading Failed - Debug Info:", {
             error: error instanceof Error ? error.message : String(error),
-            isWebKit,
-            isSafari,
+            isWebKit: platformInfo.isWebKit,
+            isSafari: platformInfo.isSafari,
             fallbackNeeded: true
           });
         }
@@ -589,9 +595,9 @@ export function ClientTimerGenerator() {
       console.log("✅ Web Worker created successfully", { workerMethod: "Direct Worker instantiation" });
 
       // Debug: Add iOS-specific Web Worker logging
-      const isiPhone = /iPhone/i.test(navigator.userAgent);
-      const isiPad = /iPad/i.test(navigator.userAgent);
-      if (isiPhone || isiPad) {
+      const _platformAdapter = getPlatformAdapter();
+      const platformInfo = _platformAdapter.getPlatformInfo();
+      if (platformInfo.isIOS) {
         console.log("🍎 iOS Web Worker Debug Info:", {
           workerCreated: true,
           workerMethod: "Next.js worker import",
@@ -931,7 +937,8 @@ export function ClientTimerGenerator() {
       mediaRecorder.start();
 
       // Check if we need to use iOS main thread rendering
-      const isIOS = detectIOS();
+      const platformAdapter = getPlatformAdapter();
+      const isIOS = platformAdapter.getPlatformInfo().isIOS;
       let preRenderedTexts: ImageData[] = null;
 
       if (isIOS) {
@@ -1015,8 +1022,8 @@ export function ClientTimerGenerator() {
           normal: `${(message.generatedFonts.normal.byteLength / 1024).toFixed(1)} KB`,
           extended: `${(message.generatedFonts.extended.byteLength / 1024).toFixed(1)} KB`
         } : 'none',
-        isiPhone: isiPhone || isiPad,
-        isWebKit: /AppleWebKit/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent)
+        isiPhone: platformAdapter.getPlatformInfo().isIOS && platformAdapter.getPlatformInfo().userAgent.includes('iPhone'),
+        isWebKit: platformAdapter.getPlatformInfo().isWebKit
       });
 
       // iOS: Send pre-rendered texts directly (no font buffers needed)

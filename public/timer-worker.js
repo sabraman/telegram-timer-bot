@@ -11,6 +11,44 @@ const SINGLE_DIGIT_MAX = 9; // 0-9 seconds
 const TWO_DIGIT_MIN = 10; // 10-59 seconds
 const MM_SS_THRESHOLD = 60; // 60+ seconds
 
+// Platform Detection for Worker Context
+function getWorkerPlatformInfo(userAgent) {
+  const ua = userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+
+  // iOS detection
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+
+  // WebKit detection (excluding Chrome which uses Blink but has WebKit in UA)
+  const isWebKit = /AppleWebKit/.test(ua) && !/Chrome/.test(ua);
+
+  // Safari detection
+  const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+
+  // Chrome detection
+  const isChrome = /Chrome/.test(ua);
+
+  return {
+    isIOS,
+    isWebKit,
+    isSafari,
+    isChrome,
+    userAgent: ua,
+    platform: isIOS ? 'iOS' :
+            /Mac/.test(ua) ? 'macOS' :
+            /Win/.test(ua) ? 'Windows' :
+            /Android/.test(ua) ? 'Android' :
+            /Linux/.test(ua) ? 'Linux' : 'Unknown'
+  };
+}
+
+function requiresIOSWorkarounds(platformInfo) {
+  return platformInfo.isIOS;
+}
+
+function requiresWebKitWorkarounds(platformInfo) {
+  return platformInfo.isWebKit && !platformInfo.isChrome;
+}
+
 self.onmessage = async function(e) {
   const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
@@ -26,36 +64,42 @@ self.onmessage = async function(e) {
       return; // Only handle generation, cache management is in main thread
     }
 
-    // Debug: WebKit detection in worker
-    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Worker Context';
-    const isWebKit = userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
-    const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
-    const isIOS = userAgent.includes('iPhone') || userAgent.includes('iPad');
+    // Use unified platform detection in worker
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : e.data.userAgent || 'Worker Context';
+    const platformInfo = getWorkerPlatformInfo(userAgent);
+    const requiresIOS = requiresIOSWorkarounds(platformInfo);
+    const requiresWebKit = requiresWebKitWorkarounds(platformInfo);
 
-    console.log("👷 Worker Environment Detection:", {
-      userAgent: userAgent.substring(0, 50) + '...',
-      isWebKit,
-      isSafari,
-      isIOS,
+    console.log("👷 Worker Platform Adapter Detection:", {
+      platform: platformInfo.platform,
+      isIOS: platformInfo.isIOS,
+      isWebKit: platformInfo.isWebKit,
+      isSafari: platformInfo.isSafari,
+      isChrome: platformInfo.isChrome,
+      userAgent: platformInfo.userAgent.substring(0, 50) + '...',
       inWorker: typeof self !== 'undefined',
       hasFontFace: typeof FontFace !== 'undefined',
       hasWorkerFonts: typeof self !== 'undefined' && typeof self.fonts !== 'undefined',
-      hasOffscreenCanvas: typeof OffscreenCanvas !== 'undefined'
+      hasOffscreenCanvas: typeof OffscreenCanvas !== 'undefined',
+      requiresWorkarounds: {
+        iOS: requiresIOS,
+        WebKit: requiresWebKit
+      }
     });
 
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
     console.log(`🔤 Worker received font buffer: ${fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
-    console.log(`🍎 iOS Mode: ${isIOS ? 'YES' : 'NO'}`);
+    console.log(`🍎 iOS Mode: ${platformInfo.isIOS ? 'YES' : 'NO'}`);
 
     // Log generated fonts for non-iOS
-    if (generatedFonts && !isIOS) {
+    if (generatedFonts && !platformInfo.isIOS) {
       console.log("🔤 Worker received generated fonts:", {
         condensed: generatedFonts.condensed ? `${(generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB` : 'NONE',
         normal: generatedFonts.normal ? `${(generatedFonts.normal.byteLength / 1024).toFixed(1)} KB` : 'NONE',
         extended: generatedFonts.extended ? `${(generatedFonts.extended.byteLength / 1024).toFixed(1)} KB` : 'NONE',
         platform: "Non-iOS (Worker Font Rendering)"
       });
-    } else if (isIOS && preRenderedTexts) {
+    } else if (platformInfo.isIOS && preRenderedTexts) {
       console.log("🍎 iOS Worker received pre-rendered texts:", {
         textCount: preRenderedTexts.length,
         approach: "Main Thread Text Rendering",
@@ -66,7 +110,7 @@ self.onmessage = async function(e) {
     }
 
     // Test WebKit-specific features
-    if (isWebKit) {
+    if (platformInfo.isWebKit) {
       console.log("🍎 WebKit Worker Detected - Testing FontFace API Support...");
 
       // Test FontFace constructor
@@ -96,12 +140,12 @@ self.onmessage = async function(e) {
     let fontsRegistered = false;
 
     // iOS: Skip font registration (using pre-rendered text approach)
-    if (isIOS && preRenderedTexts) {
+    if (platformInfo.isIOS && preRenderedTexts) {
       console.log("🍎 iOS: Skipping font registration - using pre-rendered text approach");
       fontsRegistered = true; // Set to true to bypass font rendering logic
     }
     // Non-iOS: Register generated static fonts in worker
-    else if (!isIOS && generatedFonts && typeof FontFace !== 'undefined') {
+    else if (!platformInfo.isIOS && generatedFonts && typeof FontFace !== 'undefined') {
       console.log("🍎 iOS Detected: Registering generated static fonts in Web Worker...");
 
       try {
@@ -149,13 +193,13 @@ self.onmessage = async function(e) {
           error: fontError.message,
           stack: fontError.stack,
           generatedFontsAvailable: !!generatedFonts,
-          isIOS
+          isIOS: platformInfo.isIOS
         });
         fontsRegistered = false;
       }
     }
     // iOS fallback: Try to use fonts pre-registered in main thread
-    else if (isIOS) {
+    else if (platformInfo.isIOS) {
       console.log("🍎 iOS Fallback: Using fonts pre-registered in main thread");
       fontsRegistered = true; // Assume fonts are available from main thread registration
       console.log("✅ iOS: Skipping worker font registration, using main thread fonts");
@@ -263,13 +307,13 @@ self.onmessage = async function(e) {
         fontsRegistered = false;
       }
     } else {
-      if (!isIOS) {
+      if (!platformInfo.isIOS) {
         console.log("⚠️ No font buffer available or FontFace API not supported in worker");
         console.log("🔤 Font Registration Prerequisites Check:", {
           fontBufferAvailable: !!fontBuffer,
           fontFaceConstructorAvailable: typeof FontFace !== 'undefined',
           bufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
-          isWebKit
+          isWebKit: platformInfo.isWebKit
         });
       }
       // For iOS, fontsRegistered is already set to true above
@@ -329,7 +373,7 @@ self.onmessage = async function(e) {
       }
 
       // iOS: Use pre-rendered text approach (bypasses font rendering entirely)
-      if (isIOS && preRenderedTexts) {
+      if (platformInfo.isIOS && preRenderedTexts) {
         // Font settings are not used for iOS since text is pre-rendered
         console.log(`🍎 iOS: Font settings bypassed (using pre-rendered text)`);
         return {
@@ -383,7 +427,7 @@ self.onmessage = async function(e) {
       ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
       // iOS: Use pre-rendered text from main thread
-      if (isIOS && preRenderedTexts && preRenderedTexts[frame]) {
+      if (platformInfo.isIOS && preRenderedTexts && preRenderedTexts[frame]) {
         console.log(`🍎 iOS Frame ${frame}: Using pre-rendered text for ${remainingSeconds}s`);
 
         // Put the pre-rendered text directly onto canvas
