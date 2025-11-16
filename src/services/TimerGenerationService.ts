@@ -96,8 +96,7 @@ export class TimerGenerationService {
         isWebKit: platformInfo.isWebKit,
         userAgent: platformInfo.userAgent,
         isSafari: platformInfo.isSafari,
-        workerSupport: platformInfo.features?.supportsWebWorkers,
-        fontTransferMethod: this.platformAdapter.getFontTransferMethod()
+        capabilities: this.platformAdapter.getCapabilities()
       });
 
       // Prepare font data based on platform
@@ -117,7 +116,6 @@ export class TimerGenerationService {
           isIOS: platformInfo.isIOS,
           isWebKit: platformInfo.isWebKit,
           isSafari: platformInfo.isSafari,
-          fontTransferMethod: this.platformAdapter.getFontTransferMethod(),
           platform: platformInfo.platform
         }
       };
@@ -144,9 +142,7 @@ export class TimerGenerationService {
           condensed: `${(message.generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB`,
           normal: `${(message.generatedFonts.normal.byteLength / 1024).toFixed(1)} KB`,
           extended: `${(message.generatedFonts.extended.byteLength / 1024).toFixed(1)} KB`
-        } : 'none',
-        isiPhone: platformInfo.isIOS && platformInfo.userAgent.includes('iPhone'),
-        isWebKit: platformInfo.isWebKit
+        } : 'none'
       });
 
       // Send message to worker with appropriate transfer strategy
