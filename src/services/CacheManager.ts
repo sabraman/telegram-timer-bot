@@ -1,4 +1,3 @@
-import { getPlatformAdapter } from "~/adapters/platform-adapter";
 
 export interface CacheAnalysis {
   cacheHitRate: number;
@@ -23,10 +22,16 @@ export interface LegacyCacheHit {
  * - Bidirectional cache optimization
  * - Cache analysis and smart assembly
  */
+// Memory management constants
+const MAX_INDIVIDUAL_FRAMES = 1000; // Maximum individual frames to cache
+const MAX_LEGACY_TIMERS = 10; // Maximum complete timers to cache
+const MAX_CACHE_MEMORY_MB = 50; // Maximum cache size in MB
+
 export class CacheManager {
   private individualFrameCache: Map<number, ImageData>;
   private frameCache: Map<number, ImageData[]>;
   private debugMode: boolean;
+  private memoryUsageTracker: number;
 
   constructor(
     individualFrameCache: Map<number, ImageData>,
@@ -36,6 +41,7 @@ export class CacheManager {
     this.individualFrameCache = individualFrameCache;
     this.frameCache = frameCache;
     this.debugMode = debugMode;
+    this.memoryUsageTracker = 0;
   }
 
   /**
@@ -204,7 +210,11 @@ export class CacheManager {
    * Store frames in legacy cache
    */
   setLegacyCache(duration: number, frames: ImageData[]): void {
+    // Check cache size limits before storing
+    this.enforceCacheLimits();
+
     this.frameCache.set(duration, frames);
+    this.updateMemoryUsage();
     this.debugLog("💾 Stored frames in legacy cache:", { duration, framesCount: frames.length });
   }
 
@@ -212,7 +222,11 @@ export class CacheManager {
    * Store individual frame in cache
    */
   setIndividualFrame(second: number, frame: ImageData): void {
+    // Check cache size limits before storing
+    this.enforceCacheLimits();
+
     this.individualFrameCache.set(second, frame);
+    this.updateMemoryUsage();
     this.debugLog("💾 Stored individual frame:", { second });
   }
 
@@ -296,5 +310,127 @@ export class CacheManager {
     if (this.debugMode) {
       console.log('🔧 [CacheManager]', ...args);
     }
+  }
+
+  /**
+   * Enforce cache size limits to prevent memory overflow
+   */
+  private enforceCacheLimits(): void {
+    // Check individual frame cache limit
+    if (this.individualFrameCache.size > MAX_INDIVIDUAL_FRAMES) {
+      const excessFrames = this.individualFrameCache.size - MAX_INDIVIDUAL_FRAMES;
+      const keysToRemove = Array.from(this.individualFrameCache.keys()).slice(0, excessFrames);
+
+      keysToRemove.forEach(key => {
+        this.individualFrameCache.delete(key);
+      });
+
+      this.debugLog(`🧹 Removed ${excessFrames} excess individual frames from cache`);
+    }
+
+    // Check legacy cache limit
+    if (this.frameCache.size > MAX_LEGACY_TIMERS) {
+      const excessTimers = this.frameCache.size - MAX_LEGACY_TIMERS;
+      const keysToRemove = Array.from(this.frameCache.keys()).slice(0, excessTimers);
+
+      keysToRemove.forEach(key => {
+        this.frameCache.delete(key);
+      });
+
+      this.debugLog(`🧹 Removed ${excessTimers} excess legacy timers from cache`);
+    }
+
+    // Check memory usage limit
+    if (this.getEstimatedMemoryUsage() > MAX_CACHE_MEMORY_MB * 1024 * 1024) {
+      this.clearOldestEntries();
+    }
+  }
+
+  /**
+   * Get estimated memory usage in bytes
+   */
+  private getEstimatedMemoryUsage(): number {
+    let totalSize = 0;
+
+    // Estimate ImageData size (width * height * 4 bytes per pixel)
+    for (const frame of this.individualFrameCache.values()) {
+      totalSize += frame.width * frame.height * 4;
+    }
+
+    // Estimate legacy cache size
+    for (const frames of this.frameCache.values()) {
+      for (const frame of frames) {
+        totalSize += frame.width * frame.height * 4;
+      }
+    }
+
+    return totalSize;
+  }
+
+  /**
+   * Update memory usage tracker
+   */
+  private updateMemoryUsage(): void {
+    this.memoryUsageTracker = this.getEstimatedMemoryUsage();
+  }
+
+  /**
+   * Clear oldest entries when memory limit is exceeded
+   */
+  private clearOldestEntries(): void {
+    // For simplicity, clear 25% of the oldest entries
+    const individualToRemove = Math.floor(this.individualFrameCache.size * 0.25);
+    const legacyToRemove = Math.floor(this.frameCache.size * 0.25);
+
+    // Remove oldest individual frames
+    const individualKeys = Array.from(this.individualFrameCache.keys()).slice(0, individualToRemove);
+    individualKeys.forEach(key => {
+      this.individualFrameCache.delete(key);
+    });
+
+    // Remove oldest legacy timers
+    const legacyKeys = Array.from(this.frameCache.keys()).slice(0, legacyToRemove);
+    legacyKeys.forEach(key => {
+      this.frameCache.delete(key);
+    });
+
+    this.updateMemoryUsage();
+    this.debugLog(`🧹 Cleared oldest entries due to memory pressure:`, {
+      individualFramesRemoved: individualToRemove,
+      legacyTimersRemoved: legacyToRemove,
+      newMemoryUsageMB: (this.memoryUsageTracker / (1024 * 1024)).toFixed(1)
+    });
+  }
+
+  /**
+   * Get memory usage information
+   */
+  getMemoryInfo(): {
+    individualFrameCount: number;
+    legacyTimerCount: number;
+    estimatedMemoryUsageMB: number;
+    memoryLimitMB: number;
+    usagePercentage: number;
+  } {
+    const estimatedMemoryUsage = this.getEstimatedMemoryUsage();
+    const memoryLimitBytes = MAX_CACHE_MEMORY_MB * 1024 * 1024;
+    const usagePercentage = (estimatedMemoryUsage / memoryLimitBytes) * 100;
+
+    return {
+      individualFrameCount: this.individualFrameCache.size,
+      legacyTimerCount: this.frameCache.size,
+      estimatedMemoryUsageMB: Math.round(estimatedMemoryUsage / (1024 * 1024) * 100) / 100,
+      memoryLimitMB: MAX_CACHE_MEMORY_MB,
+      usagePercentage: Math.round(usagePercentage * 100) / 100
+    };
+  }
+
+  /**
+   * Check if cache is approaching memory limits
+   */
+  isNearMemoryLimit(threshold = 0.8): boolean {
+    const estimatedUsage = this.getEstimatedMemoryUsage();
+    const memoryLimit = MAX_CACHE_MEMORY_MB * 1024 * 1024;
+    return (estimatedUsage / memoryLimit) > threshold;
   }
 }

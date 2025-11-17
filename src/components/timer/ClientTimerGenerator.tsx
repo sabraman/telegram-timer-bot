@@ -29,6 +29,7 @@ import { CacheManager } from "~/services/CacheManager";
 import { TimerGenerationService, type TimerGenerationOptions } from "~/services/TimerGenerationService";
 import { TelegramUploader, type UploadOptions } from "~/services/TelegramUploader";
 import { VideoEncoder, type EncodingOptions } from "~/services/VideoEncoder";
+import { MemoryMonitor } from "~/lib/memory-monitor";
 
 // Create timer options for wheel picker
 const createArray = (length: number, add = 0): WheelPickerOption[] =>
@@ -51,6 +52,7 @@ export function ClientTimerGenerator() {
   const [progress, setProgress] = useState(0);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const videoUrlRef = useRef<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
   const [showLottieSuccess, setShowLottieSuccess] = useState(false);
   const videoPreviewRef = useRef<HTMLDivElement>(null);
@@ -499,6 +501,12 @@ export function ClientTimerGenerator() {
     const fps = TIMER_FPS;
     const duration = frames.length;
 
+    // Cleanup previous video URL before creating a new one
+    if (videoUrlRef.current) {
+      URL.revokeObjectURL(videoUrlRef.current);
+      videoUrlRef.current = null;
+    }
+
     const videoBlob = await videoEncoder.encodeFramesToVideo({
       frames,
       fps,
@@ -507,11 +515,12 @@ export function ClientTimerGenerator() {
     });
 
     const endTime = performance.now();
-    const totalTime = endTime - performance.now();
+    const totalTime = endTime - startTime;
     const url = URL.createObjectURL(videoBlob);
 
     setVideoBlob(videoBlob);
     setVideoUrl(url);
+    videoUrlRef.current = url; // Update ref immediately
 
     console.log(`✅ WebM sticker generated!`, {
       duration: `${duration}s`,
@@ -1000,6 +1009,52 @@ export function ClientTimerGenerator() {
       // Small delay to ensure the video preview is rendered
       setTimeout(scrollToVideo, 100);
     }
+  }, [videoUrl]);
+
+  // Memory monitoring setup
+  useEffect(() => {
+    const memoryMonitor = MemoryMonitor.createMemoryMonitor(30000); // Check every 30 seconds
+
+    // Start monitoring memory usage
+    memoryMonitor.startMonitoring('ClientTimerGenerator', {
+      warning: 50,   // 50MB warning
+      critical: 100, // 100MB critical
+      emergency: 150 // 150MB emergency
+    });
+
+    return () => {
+      memoryMonitor.stopMonitoring();
+    };
+  }, []);
+
+  // Critical: Cleanup video URLs and other resources on unmount
+  useEffect(() => {
+    return () => {
+      // Revoke video URL to prevent memory leaks
+      if (videoUrlRef.current) {
+        URL.revokeObjectURL(videoUrlRef.current);
+        videoUrlRef.current = null;
+      }
+
+      // Clear caches to prevent memory accumulation
+      cacheManager.clearAllCaches();
+
+      // Log memory usage at cleanup
+      MemoryMonitor.logMemoryUsage('ClientTimerGenerator cleanup', {}, true);
+    };
+  }, [cacheManager]);
+
+  // Cleanup video URL when it changes
+  useEffect(() => {
+    // Update ref when videoUrl changes
+    videoUrlRef.current = videoUrl;
+
+    return () => {
+      // Revoke previous URL when component re-renders with new URL
+      if (videoUrlRef.current && videoUrlRef.current !== videoUrl) {
+        URL.revokeObjectURL(videoUrlRef.current);
+      }
+    };
   }, [videoUrl]);
 
   return (

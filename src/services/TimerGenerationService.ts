@@ -1,6 +1,7 @@
 import { getPlatformAdapter } from "~/adapters/platform-adapter";
 import { TIMER_FPS } from "~/constants/timer";
 import { VideoEncoder, type EncodingOptions } from "./VideoEncoder";
+import { MemoryMonitor } from "~/lib/memory-monitor";
 
 export interface TimerGenerationOptions {
   totalSeconds: number;
@@ -78,6 +79,12 @@ export class TimerGenerationService {
     // Validate input
     if (totalSeconds <= 0) {
       throw new Error("Timer duration must be greater than 0 seconds");
+    }
+
+    // Check memory usage before starting generation
+    const memoryCheck = MemoryMonitor.checkMemoryThresholds({ warning: 50, critical: 100 });
+    if (memoryCheck.level === 'critical' || memoryCheck.level === 'emergency') {
+      console.warn('🧠 [TimerGenerationService] High memory usage detected:', memoryCheck.message);
     }
 
     this.debugLog("🎯 Starting timer generation:", { totalSeconds });
@@ -161,6 +168,12 @@ export class TimerGenerationService {
       // Always clean up worker
       worker.terminate();
       this.debugLog("🧹 Worker terminated");
+
+      // Log memory usage after completion
+      MemoryMonitor.logMemoryUsage('TimerGenerationService completed', {
+        warning: 50,
+        critical: 100
+      });
     }
   }
 
