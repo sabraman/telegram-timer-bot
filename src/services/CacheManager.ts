@@ -1,5 +1,4 @@
 import { getPlatformAdapter } from "~/adapters/platform-adapter";
-import { TIMER_FPS } from "~/constants/timer";
 
 export interface CacheAnalysis {
   cacheHitRate: number;
@@ -28,7 +27,6 @@ export class CacheManager {
   private individualFrameCache: Map<number, ImageData>;
   private frameCache: Map<number, ImageData[]>;
   private debugMode: boolean;
-  private platformAdapter = getPlatformAdapter();
 
   constructor(
     individualFrameCache: Map<number, ImageData>,
@@ -88,7 +86,10 @@ export class CacheManager {
 
     if (cachedDurations.length > 0) {
       const sourceDuration = cachedDurations[0];
-      const sourceFrames = this.frameCache.get(sourceDuration)!;
+      const sourceFrames = this.frameCache.get(sourceDuration);
+      if (!sourceFrames) {
+        return undefined;
+      }
 
       this.debugLog("🎯 Found bidirectional cache hit:", {
         targetDuration,

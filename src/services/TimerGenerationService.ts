@@ -1,9 +1,5 @@
 import { getPlatformAdapter } from "~/adapters/platform-adapter";
-import {
-  CANVAS_SIZE,
-  TIMER_FPS,
-  RECORDING_FPS,
-} from "~/constants/timer";
+import { TIMER_FPS } from "~/constants/timer";
 import { VideoEncoder, type EncodingOptions } from "./VideoEncoder";
 
 export interface TimerGenerationOptions {
@@ -40,7 +36,7 @@ export interface WorkerMessage {
   };
   preRenderedTexts?: ImageData[];
   workerId: number;
-  platformInfo?: any;
+  platformInfo?: Record<string, unknown>;
 }
 
 export interface WorkerResponse {
@@ -53,7 +49,7 @@ export interface WorkerResponse {
     normal: ArrayBuffer;
     extended: ArrayBuffer;
   };
-  performanceMetrics?: any;
+  performanceMetrics?: Record<string, unknown>;
 }
 
 /**
@@ -81,7 +77,7 @@ export class TimerGenerationService {
     const startTime = performance.now();
     const fps = TIMER_FPS;
     const duration = totalSeconds + 1;
-    const totalFrames = fps * duration;
+    const _totalFrames = fps * duration;
     const workerId = Date.now();
 
     this.debugLog("👷 Creating Web Worker for frame generation...");
@@ -168,7 +164,11 @@ export class TimerGenerationService {
     const isIOS = this.platformAdapter.getPlatformInfo().isIOS;
 
     let fontBufferForTransfer: ArrayBuffer | null = null;
-    let generatedFontBuffers: any = null;
+    let generatedFontBuffers: {
+      condensed: ArrayBuffer;
+      normal: ArrayBuffer;
+      extended: ArrayBuffer;
+    } | null = null;
 
     // iOS: Use generated fonts if available
     if (isIOS && generatedFonts?.condensed && generatedFonts?.normal && generatedFonts?.extended) {
@@ -230,7 +230,6 @@ export class TimerGenerationService {
   ): Promise<GenerationResult> {
     return new Promise((resolve, reject) => {
       let frames: ImageData[] = [];
-      let generationComplete = false;
 
       const handleMessage = (event: MessageEvent<WorkerResponse>) => {
         const message = event.data;
@@ -250,7 +249,6 @@ export class TimerGenerationService {
           case "complete":
             if (message.frames) {
               frames = message.frames;
-              generationComplete = true;
 
               const endTime = performance.now();
               const totalTime = endTime - startTime;

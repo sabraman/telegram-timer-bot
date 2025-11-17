@@ -8,10 +8,9 @@ import {
   CANVAS_SIZE,
   BITRATE,
   VIDEO_MIME_TYPE,
-  VIDEO_CONTAINER_TYPE,
-  VP9_CODEC,
-  LEGACY_VP9_CODEC,
-  TIMER_FPS,
+  MEDIABUNNY_CODEC,
+  MEDIABUNNY_BITRATE,
+  MEDIABUNNY_ALPHA,
 } from "~/constants/timer";
 
 export interface EncodingStrategy {
@@ -170,19 +169,18 @@ class MediabunnyStrategy implements EncodingStrategy {
       throw new Error("Failed to get 2D context from offscreen canvas");
     }
 
-    // Create canvas source with Telegram-compatible settings
+    // Create canvas source with Mediabunny-compatible settings
     const canvasSource = new CanvasSource(canvas, {
-      codec: VP9_CODEC,
-      bitrate: BITRATE,
-      alpha: 'keep', // Preserves transparency
-      fullCodecString: LEGACY_VP9_CODEC // VP9 with alpha support
+      codec: MEDIABUNNY_CODEC,
+      bitrate: MEDIABUNNY_BITRATE,
+      alpha: MEDIABUNNY_ALPHA // Preserves transparency
     });
 
     const output = new Output({
       target: BufferTarget.BUFFER,
       format: new WebMOutputFormat({
-        codec: VP9_CODEC,
-        bitrate: BITRATE
+        codec: MEDIABUNNY_CODEC,
+        bitrate: MEDIABUNNY_BITRATE
       })
     });
 
@@ -205,8 +203,8 @@ class MediabunnyStrategy implements EncodingStrategy {
     // Finalize encoding
     const finalBuffer = await output.finalize();
 
-    // Create blob from buffer
-    const blob = new Blob([finalBuffer], { type: `${VIDEO_CONTAINER_TYPE};codecs=${VP9_CODEC}` });
+    // Create blob from buffer with proper MIME type
+    const blob = new Blob([finalBuffer], { type: VIDEO_MIME_TYPE });
 
     this.debugLog("✅ Mediabunny encoding completed:", {
       framesCount: totalFrames,
@@ -240,7 +238,7 @@ class MediaRecorderStrategy implements EncodingStrategy {
 
   isSupported(): boolean {
     return typeof MediaRecorder !== 'undefined' &&
-           MediaRecorder.isTypeSupported(`${VIDEO_CONTAINER_TYPE};codecs=${VP9_CODEC}`);
+           MediaRecorder.isTypeSupported(VIDEO_MIME_TYPE);
   }
 
   async encode(frames: ImageData[], fps: number, onProgress: (progress: number) => void): Promise<Blob> {
@@ -257,11 +255,11 @@ class MediaRecorderStrategy implements EncodingStrategy {
       }
 
       // Create stream from canvas
-      const stream = canvas.captureStream(RECORDING_FPS);
+      const stream = canvas.captureStream(30); // Use 30fps for recording
 
-      // Create MediaRecorder with Telegram-compatible settings
+      // Create MediaRecorder with VP9 settings
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: `${VIDEO_CONTAINER_TYPE};codecs=${VP9_CODEC}`,
+        mimeType: VIDEO_MIME_TYPE,
         videoBitsPerSecond: BITRATE
       });
 
@@ -276,7 +274,7 @@ class MediaRecorderStrategy implements EncodingStrategy {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: `${VIDEO_CONTAINER_TYPE};codecs=${VP9_CODEC}` });
+        const blob = new Blob(chunks, { type: VIDEO_MIME_TYPE });
 
         this.debugLog("✅ MediaRecorder encoding completed:", {
           framesCount: totalFrames,
@@ -367,7 +365,7 @@ class WebCodecsStrategy implements EncodingStrategy {
 
             if (currentFrame === totalFrames) {
               // Encoding complete, create blob
-              const webmBlob = new Blob(chunks, { type: `${VIDEO_CONTAINER_TYPE};codecs=${VP9_CODEC}` });
+              const webmBlob = new Blob(chunks, { type: VIDEO_MIME_TYPE });
 
               this.debugLog("✅ WebCodecs encoding completed:", {
                 framesCount: totalFrames,
@@ -385,7 +383,7 @@ class WebCodecsStrategy implements EncodingStrategy {
         });
 
         encoder.configure({
-          codec: VP9_CODEC,
+          codec: MEDIABUNNY_CODEC,
           width: CANVAS_SIZE,
           height: CANVAS_SIZE,
           bitrate: BITRATE,
