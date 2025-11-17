@@ -5,9 +5,9 @@
   "phase": "phase_1_complete",
   "progress": {
     "total_tasks": 38,
-    "completed_tasks": 21,
+    "completed_tasks": 23,
     "current_phase": 3,
-    "status": "memory_management_completed"
+    "status": "legacy_removal_completed"
   },
   "tasks": {
     "phase_1_critical_fixes": {
@@ -56,9 +56,9 @@
         "files_affected": ["worker management", "cache cleanup", "src/lib/memory-monitor.ts"]
       },
       "legacy_removal": {
-        "status": "pending",
+        "status": "completed",
         "risk": "low",
-        "files_affected": ["src/remotion/", "package.json"]
+        "files_affected": ["src/remotion/", "src/components/timer/TimerGenerator.tsx", "package.json"]
       },
       "bundle_optimization": {
         "status": "pending",
