@@ -1,5 +1,5 @@
 import { Bot } from "grammy";
-import { env } from "./env";
+import { env } from "~/lib/bot/env";
 
 // Make sure the token is available
 if (!env.TG_API_TOKEN) {

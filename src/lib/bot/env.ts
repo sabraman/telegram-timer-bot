@@ -26,7 +26,18 @@ export const env = createEnv({
    * What object holds the environment variables at runtime. This is usually
    * `process.env` or `import.meta.env`.
    */
-  runtimeEnv: process.env,
+  runtimeEnv: {
+    TG_API_TOKEN:
+      process.env.TG_API_TOKEN ??
+      (process.env.NODE_ENV === "test" ? "test-token-for-testing" : undefined),
+    CONVEX_DEPLOYMENT: process.env.CONVEX_DEPLOYMENT,
+    NODE_ENV: process.env.NODE_ENV,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_TG_APP_URL: process.env.NEXT_PUBLIC_TG_APP_URL,
+    NEXT_PUBLIC_CONVEX_URL: process.env.NEXT_PUBLIC_CONVEX_URL,
+    NEXT_PUBLIC_VERCEL_ENV: process.env.NEXT_PUBLIC_VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_URL: process.env.NEXT_PUBLIC_VERCEL_URL,
+  },
 
   /**
    * By default, this library will feed the environment variables directly to

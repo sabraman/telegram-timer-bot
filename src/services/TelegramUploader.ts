@@ -165,7 +165,17 @@ export class TelegramUploader {
       'video/webm;codecs=vp9.0'
     ];
 
-    if (!validTypes.some(type => videoBlob.type.includes(type))) {
+    const isValidType = validTypes.some(type => {
+      // Exact match
+      if (videoBlob.type === type) return true;
+      // Check if blob type starts with valid type (for codec variations)
+      if (videoBlob.type.startsWith(type)) return true;
+      // Check if valid type is contained in blob type (for specific codecs)
+      if (videoBlob.type.includes(type)) return true;
+      return false;
+    });
+
+    if (!isValidType) {
       errors.push(`Invalid file type: ${videoBlob.type} (expected: video/webm with VP8/VP9 codec)`);
     }
 
