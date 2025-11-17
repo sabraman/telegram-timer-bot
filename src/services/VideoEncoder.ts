@@ -177,7 +177,6 @@ class MediabunnyStrategy implements EncodingStrategy {
       const output = new Mediabunny.Output({
         target: new Mediabunny.BufferTarget(),
         format: new Mediabunny.WebMOutputFormat({
-          codec: MEDIABUNNY_CODEC,
           bitrate: MEDIABUNNY_BITRATE
         })
       });
@@ -442,8 +441,12 @@ class WebCodecsStrategy implements EncodingStrategy {
         // Encode each frame
         for (let i = 0; i < frames.length; i++) {
           const frameData = frames[i];
+          if (!frameData) {
+            continue; // Skip undefined frames
+          }
 
           // Create VideoFrame from ImageData
+          // Convert ImageData to ImageBitmap first for WebCodecs compatibility
           const videoFrame = new VideoFrame(frameData, {
             timestamp: i * frameDuration,
             duration: frameDuration

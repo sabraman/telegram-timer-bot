@@ -19,16 +19,23 @@ import type { WheelPickerOption } from "~/components/ui/wheel-picker";
 import { WheelPicker, WheelPickerWrapper } from "~/components/ui/wheel-picker";
 import { useHapticFeedback } from "~/hooks/use-haptic-feedback";
 import {
+  BITRATE,
   CANVAS_SIZE,
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   DEFAULT_TIMER_FILENAME,
+  LEGACY_VP9_CODEC,
   TIMER_FPS,
+  VIDEO_MIME_TYPE,
+  VP9_CODEC,
 } from "~/constants/timer";
-import { CacheManager } from "~/services/CacheManager";
+import { CacheManager, type CacheAnalysis, type LegacyCacheHit } from "~/services/CacheManager";
 import { TimerGenerationService, type TimerGenerationOptions } from "~/services/TimerGenerationService";
 import { TelegramUploader, type UploadOptions } from "~/services/TelegramUploader";
 import { VideoEncoder, type EncodingOptions } from "~/services/VideoEncoder";
+
+// Mediabunny imports for fallback encoding strategy
+import Mediabunny from "mediabunny";
 import { MemoryMonitor } from "~/lib/memory-monitor";
 
 // Create timer options for wheel picker
@@ -448,7 +455,10 @@ export function ClientTimerGenerator() {
 
       if (cacheManager.hasLegacyCache(currentTimerSeconds)) {
         console.log("🎯 LEGACY CACHE HIT: Using cached frames");
-        const cachedFrames = cacheManager.getLegacyCache(currentTimerSeconds)!;
+        const cachedFrames = cacheManager.getLegacyCache(currentTimerSeconds);
+        if (!cachedFrames) {
+          throw new Error("Legacy cache indicated existence but returned undefined");
+        }
         await encodeAndSetVideo(cachedFrames, "legacy");
         return;
       }
@@ -469,7 +479,7 @@ export function ClientTimerGenerator() {
   };
 
   // Helper methods for the refactored generateTimerClientSide
-  const handleCacheHit = async (cacheAnalysis: any, currentTimerSeconds: number) => {
+  const handleCacheHit = async (cacheAnalysis: CacheAnalysis, currentTimerSeconds: number) => {
     const startTime = performance.now();
 
     try {
@@ -483,7 +493,7 @@ export function ClientTimerGenerator() {
     }
   };
 
-  const handleLegacyCacheHit = async (legacyCacheHit: any, currentTimerSeconds: number) => {
+  const handleLegacyCacheHit = async (legacyCacheHit: LegacyCacheHit, currentTimerSeconds: number) => {
     const startTime = performance.now();
 
     try {
@@ -542,7 +552,7 @@ export function ClientTimerGenerator() {
     }
   };
 
-  const generateNewTimer = async (currentTimerSeconds: number, cacheAnalysis: any) => {
+  const generateNewTimer = async (currentTimerSeconds: number, cacheAnalysis: CacheAnalysis) => {
     const timerGenerationService = new TimerGenerationService(DEBUG_MODE);
 
     // Check if we need to use iOS main thread rendering
@@ -802,7 +812,7 @@ export function ClientTimerGenerator() {
     };
   }, [frameCache]);
 
-  const extractLegacyCacheSubset = useCallback((cacheHit: any, targetDuration: number) => {
+  const extractLegacyCacheSubset = useCallback((cacheHit: LegacyCacheHit, targetDuration: number) => {
     const { sourceFrames, subsetStart, subsetEnd } = cacheHit;
 
     // Extract the relevant frames from the longer cached timer
@@ -860,7 +870,7 @@ export function ClientTimerGenerator() {
 
         // Create CanvasSource with Telegram-compatible VP9 + alpha settings
         // Using specific codec string and alpha preservation for sticker compatibility
-        const canvasSource = new CanvasSource(canvas, {
+        const canvasSource = new Mediabunny.CanvasSource(canvas, {
           codec: "vp9",
           bitrate: BITRATE, // Same bitrate as working MediaRecorder
           alpha: "keep", // Preserve alpha channel for Telegram stickers (like -pix_fmt yuva420p)
@@ -868,9 +878,9 @@ export function ClientTimerGenerator() {
         });
 
         // Create Output with WebM format for Telegram compatibility
-        const output = new Output({
-          format: new WebMOutputFormat(),
-          target: new BufferTarget(),
+        const output = new Mediabunny.Output({
+          format: new Mediabunny.WebMOutputFormat(),
+          target: new Mediabunny.BufferTarget(),
         });
 
         // Connect CanvasSource to Output (correct pattern)
