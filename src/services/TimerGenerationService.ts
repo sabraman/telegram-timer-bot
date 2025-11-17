@@ -4,6 +4,7 @@ import {
   TIMER_FPS,
   RECORDING_FPS,
 } from "~/constants/timer";
+import { VideoEncoder, type EncodingOptions } from "./VideoEncoder";
 
 export interface TimerGenerationOptions {
   totalSeconds: number;
@@ -62,9 +63,11 @@ export interface WorkerResponse {
 export class TimerGenerationService {
   private debugMode: boolean;
   private platformAdapter = getPlatformAdapter();
+  private videoEncoder: VideoEncoder;
 
   constructor(debugMode = false) {
     this.debugMode = debugMode;
+    this.videoEncoder = new VideoEncoder(debugMode);
   }
 
   /**
@@ -107,37 +110,30 @@ export class TimerGenerationService {
         preRenderedTexts
       } = this.prepareFontData(options);
 
-      // Create worker message
-      const message: WorkerMessage = {
-        type: "generate",
-        totalSeconds,
+      // Create worker message matching expected format
+      const message = {
+        action: "generate",
+        timerSeconds: totalSeconds,
         workerId,
-        platformInfo: {
-          isIOS: platformInfo.isIOS,
-          isWebKit: platformInfo.isWebKit,
-          isSafari: platformInfo.isSafari,
-          platform: platformInfo.platform
-        }
+        fontLoaded: true,
+        fontBuffer: fontBufferForTransfer,
+        generatedFonts: generatedFontBuffers,
+        preRenderedTexts: preRenderedTexts,
+        isIOS,
+        debugMode: this.debugMode
       };
 
-      // Add font data to message based on platform
-      if (isIOS && preRenderedTexts) {
-        message.preRenderedTexts = preRenderedTexts;
-      } else if (generatedFontBuffers) {
-        message.generatedFonts = generatedFontBuffers;
-      } else if (fontBufferForTransfer) {
-        message.fontBufferData = fontBufferForTransfer;
-      }
-
+      
       this.debugLog("📤 Sending generation message to worker:", {
-        type: message.type,
-        totalSeconds: message.totalSeconds,
+        action: message.action,
+        timerSeconds: message.timerSeconds,
         workerId: message.workerId,
-        hasFontBufferData: !!message.fontBufferData,
+        hasFontBuffer: !!message.fontBuffer,
         hasGeneratedFonts: !!message.generatedFonts,
         hasPreRenderedTexts: !!message.preRenderedTexts,
         preRenderedTextsLength: message.preRenderedTexts?.length || 0,
-        platformInfo: message.platformInfo,
+        isIOS: message.isIOS,
+        debugMode: message.debugMode,
         generatedFontsSize: message.generatedFonts ? {
           condensed: `${(message.generatedFonts.condensed.byteLength / 1024).toFixed(1)} KB`,
           normal: `${(message.generatedFonts.normal.byteLength / 1024).toFixed(1)} KB`,
@@ -234,8 +230,6 @@ export class TimerGenerationService {
   ): Promise<GenerationResult> {
     return new Promise((resolve, reject) => {
       let frames: ImageData[] = [];
-      let receivedFrames = 0;
-      let totalFrames = 0;
       let generationComplete = false;
 
       const handleMessage = (event: MessageEvent<WorkerResponse>) => {
@@ -267,8 +261,19 @@ export class TimerGenerationService {
                 averageTimePerFrame: `${(totalTime / frames.length).toFixed(2)}ms`
               });
 
-              // Convert frames to video using external encoder
-              this.encodeFramesToVideo(frames)
+              // Use VideoEncoder service to convert frames to video
+              const encodingOptions: EncodingOptions = {
+                frames,
+                fps: TIMER_FPS,
+                onProgress: (progress) => {
+                  // Scale progress from 50-100% for encoding phase
+                  const scaledProgress = 50 + (progress / 2);
+                  onProgress(scaledProgress);
+                },
+                debugMode: this.debugMode
+              };
+
+              this.videoEncoder.encodeFramesToVideo(encodingOptions)
                 .then((videoBlob) => {
                   const url = URL.createObjectURL(videoBlob);
 
@@ -294,14 +299,7 @@ export class TimerGenerationService {
     });
   }
 
-  /**
-   * Encode frames to video (placeholder - will be extracted to VideoEncoder service)
-   */
-  private async encodeFramesToVideo(frames: ImageData[]): Promise<Blob> {
-    // This will be replaced with VideoEncoder service
-    throw new Error("Video encoding not implemented in TimerGenerationService");
-  }
-
+  
   /**
    * Debug logging function
    */
