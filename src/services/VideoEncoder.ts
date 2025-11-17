@@ -1,9 +1,4 @@
-import {
-  BufferTarget,
-  CanvasSource,
-  Output,
-  WebMOutputFormat,
-} from "mediabunny";
+import Mediabunny from "mediabunny";
 import {
   CANVAS_SIZE,
   BITRATE,
@@ -170,15 +165,15 @@ class MediabunnyStrategy implements EncodingStrategy {
     }
 
     // Create canvas source with Mediabunny-compatible settings
-    const canvasSource = new CanvasSource(canvas, {
+    const canvasSource = new Mediabunny.CanvasSource(canvas, {
       codec: MEDIABUNNY_CODEC,
       bitrate: MEDIABUNNY_BITRATE,
       alpha: MEDIABUNNY_ALPHA // Preserves transparency
     });
 
-    const output = new Output({
-      target: BufferTarget.BUFFER,
-      format: new WebMOutputFormat({
+    const output = new Mediabunny.Output({
+      target: Mediabunny.Targets.Buffer,
+      format: new Mediabunny.WebMOutputFormat({
         codec: MEDIABUNNY_CODEC,
         bitrate: MEDIABUNNY_BITRATE
       })
@@ -246,11 +241,13 @@ class MediaRecorderStrategy implements EncodingStrategy {
       this.debugLog("🎥 Using MediaRecorder for video encoding");
 
       // Create canvas for rendering
-      const canvas = new OffscreenCanvas(CANVAS_SIZE, CANVAS_SIZE);
+      const canvas = document.createElement('canvas');
+      canvas.width = CANVAS_SIZE;
+      canvas.height = CANVAS_SIZE;
       const ctx = canvas.getContext('2d');
 
       if (!ctx) {
-        reject(new Error("Failed to get 2D context from offscreen canvas"));
+        reject(new Error("Failed to get 2D context from canvas"));
         return;
       }
 
