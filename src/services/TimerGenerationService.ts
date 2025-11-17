@@ -26,8 +26,8 @@ export interface GenerationResult {
 }
 
 export interface WorkerMessage {
-  type: 'generate';
-  totalSeconds: number;
+  action: 'generate';
+  timerSeconds: number;
   fontBufferData?: ArrayBuffer;
   generatedFonts?: {
     condensed: ArrayBuffer;
@@ -36,6 +36,9 @@ export interface WorkerMessage {
   };
   preRenderedTexts?: ImageData[];
   workerId: number;
+  fontBuffer?: ArrayBuffer;
+  isIOS?: boolean;
+  debugMode?: boolean;
   platformInfo?: Record<string, unknown>;
 }
 
@@ -112,14 +115,14 @@ export class TimerGenerationService {
       } = this.prepareFontData(options);
 
       // Create worker message matching expected format
-      const message = {
+      const message: WorkerMessage = {
         action: "generate",
         timerSeconds: totalSeconds,
+        fontBufferData: fontBufferForTransfer || undefined,
+        generatedFonts: generatedFontBuffers || undefined,
+        preRenderedTexts,
         workerId,
-        fontLoaded: true,
-        fontBuffer: fontBufferForTransfer,
-        generatedFonts: generatedFontBuffers,
-        preRenderedTexts: preRenderedTexts,
+        fontBuffer: fontBufferForTransfer || undefined,
         isIOS,
         debugMode: this.debugMode
       };

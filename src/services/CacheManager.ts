@@ -86,6 +86,9 @@ export class CacheManager {
 
     if (cachedDurations.length > 0) {
       const sourceDuration = cachedDurations[0];
+      if (sourceDuration === undefined) {
+        return undefined;
+      }
       const sourceFrames = this.frameCache.get(sourceDuration);
       if (!sourceFrames) {
         return undefined;
@@ -144,6 +147,9 @@ export class CacheManager {
    */
   extractLegacyCacheSubset(cacheHit: LegacyCacheHit, targetDuration: number): ImageData[] {
     const { duration: sourceDuration, frames: sourceFrames } = cacheHit;
+    if (sourceDuration === undefined) {
+      throw new Error("Source duration is undefined in legacy cache hit");
+    }
     const frameSkip = Math.floor(sourceFrames.length / sourceDuration);
     const extractedFrames: ImageData[] = [];
 
@@ -158,8 +164,9 @@ export class CacheManager {
     for (let second = 0; second <= targetDuration; second++) {
       const sourceFrameIndex = sourceFrames.length - (targetDuration + 1 - second) * frameSkip;
 
-      if (sourceFrameIndex >= 0 && sourceFrameIndex < sourceFrames.length) {
-        extractedFrames.push(sourceFrames[sourceFrameIndex]);
+      const frame = sourceFrames[sourceFrameIndex];
+      if (sourceFrameIndex >= 0 && sourceFrameIndex < sourceFrames.length && frame) {
+        extractedFrames.push(frame);
       } else {
         this.debugLog(`❌ Cannot extract frame for second: ${second}, index: ${sourceFrameIndex}`);
       }
