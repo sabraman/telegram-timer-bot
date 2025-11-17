@@ -420,6 +420,13 @@ export function ClientTimerGenerator() {
       totalSeconds: currentTimerSeconds,
     });
 
+    // Validate timer duration
+    if (currentTimerSeconds === 0) {
+      alert("Please select a timer duration greater than 0 seconds");
+      setIsGenerating(false);
+      return;
+    }
+
     try {
       // Check cache first for optimization
       const cacheAnalysis = cacheManager.analyzeFrameCache(currentTimerSeconds);
@@ -571,6 +578,11 @@ export function ClientTimerGenerator() {
 
     try {
       const result = await timerGenerationService.generateTimer(generationOptions);
+
+      // Validate result
+      if (!result || !result.videoBlob) {
+        throw new Error("Timer generation failed: No video data returned");
+      }
 
       setVideoBlob(result.videoBlob);
       setVideoUrl(result.videoUrl);

@@ -72,6 +72,11 @@ export class TimerGenerationService {
   async generateTimer(options: TimerGenerationOptions): Promise<GenerationResult> {
     const { totalSeconds, onProgress } = options;
 
+    // Validate input
+    if (totalSeconds <= 0) {
+      throw new Error("Timer duration must be greater than 0 seconds");
+    }
+
     this.debugLog("🎯 Starting timer generation:", { totalSeconds });
 
     const startTime = performance.now();
