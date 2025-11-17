@@ -1,4 +1,4 @@
-import Mediabunny from "mediabunny";
+import * as Mediabunny from "mediabunny";
 import {
   CANVAS_SIZE,
   BITRATE,
@@ -149,65 +149,117 @@ class MediabunnyStrategy implements EncodingStrategy {
   }
 
   isSupported(): boolean {
-    // Check if CanvasSource is available
-    return typeof CanvasSource !== 'undefined';
+    // Check if Mediabunny library is available and has CanvasSource
+    return typeof Mediabunny !== 'undefined' &&
+           typeof Mediabunny.CanvasSource !== 'undefined';
   }
 
   async encode(frames: ImageData[], fps: number, onProgress: (progress: number) => void): Promise<Blob> {
     this.debugLog("🚀 Using Mediabunny for instant video encoding");
 
-    // Create offscreen canvas for frame rendering
-    const canvas = new OffscreenCanvas(CANVAS_SIZE, CANVAS_SIZE);
-    const ctx = canvas.getContext('2d');
+    try {
+      // Create OffscreenCanvas for Mediabunny compatibility
+      const canvas = new OffscreenCanvas(CANVAS_SIZE, CANVAS_SIZE);
+      const ctx = canvas.getContext('2d');
 
-    if (!ctx) {
-      throw new Error("Failed to get 2D context from offscreen canvas");
-    }
+      if (!ctx) {
+        throw new Error("Failed to get 2D context from OffscreenCanvas");
+      }
 
-    // Create canvas source with Mediabunny-compatible settings
-    const canvasSource = new Mediabunny.CanvasSource(canvas, {
-      codec: MEDIABUNNY_CODEC,
-      bitrate: MEDIABUNNY_BITRATE,
-      alpha: MEDIABUNNY_ALPHA // Preserves transparency
-    });
-
-    const output = new Mediabunny.Output({
-      target: Mediabunny.Targets.Buffer,
-      format: new Mediabunny.WebMOutputFormat({
+      // Create CanvasSource with Telegram-compatible settings
+      const canvasSource = new Mediabunny.CanvasSource(canvas, {
         codec: MEDIABUNNY_CODEC,
-        bitrate: MEDIABUNNY_BITRATE
-      })
-    });
+        bitrate: MEDIABUNNY_BITRATE,
+        alpha: MEDIABUNNY_ALPHA
+      });
 
-    // Progress tracking
-    const totalFrames = frames.length;
-    let currentFrame = 0;
+      // Create Output with BufferTarget
+      const output = new Mediabunny.Output({
+        target: new Mediabunny.BufferTarget(),
+        format: new Mediabunny.WebMOutputFormat({
+          codec: MEDIABUNNY_CODEC,
+          bitrate: MEDIABUNNY_BITRATE
+        })
+      });
 
-    // Render each frame
-    for (const frame of frames) {
-      ctx.putImageData(frame, 0, 0);
-      await canvasSource.renderFrame();
+      // Connect CanvasSource to Output (correct pattern)
+      output.addVideoTrack(canvasSource);
 
-      currentFrame++;
-      const progress = Math.round((currentFrame / totalFrames) * 100);
-      onProgress(progress);
+      // Start the output pipeline
+      await output.start();
 
-      this.debugLog(`📊 Mediabunny Progress: ${progress}% (${currentFrame}/${totalFrames})`);
+      // Progress tracking
+      const totalFrames = frames.length;
+      let currentFrame = 0;
+
+      this.debugLog("🎬 Starting frame rendering:", {
+        totalFrames,
+        canvasSize: `${CANVAS_SIZE}x${CANVAS_SIZE}`,
+        firstFrameData: frames[0] ? {
+          width: frames[0].width,
+          height: frames[0].height,
+          dataLength: frames[0].data.length
+        } : 'No frames'
+      });
+
+      // Add all frames with proper timing (like original working code)
+      for (let i = 0; i < frames.length; i++) {
+        const timestamp = i * 1.0; // 0, 1, 2, 3... seconds for 1fps content
+        const duration = 1.0; // Each frame lasts exactly 1 second
+
+        // Clear canvas to ensure transparency (like original)
+        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+        // Draw frame to canvas with alpha channel
+        ctx.putImageData(frames[i], 0, 0);
+
+        // Add frame to output with correct timing
+        await canvasSource.add(timestamp, duration);
+
+        currentFrame++;
+        const progress = Math.round((currentFrame / totalFrames) * 100);
+        onProgress(progress);
+
+        this.debugLog(`📊 Mediabunny Progress: ${progress}% (${currentFrame}/${totalFrames}), timestamp: ${timestamp}s, frameAdded: true`);
+      }
+
+      // Close source to improve performance
+      canvasSource.close();
+
+      this.debugLog("🔄 Finalizing video encoding...");
+
+      // Finalize encoding
+      await output.finalize();
+
+      // Get buffer from output target
+      const finalBuffer = output.target.buffer;
+
+      if (!finalBuffer || finalBuffer.byteLength === 0) {
+        throw new Error("Mediabunny produced empty buffer");
+      }
+
+      // Create blob from buffer with proper MIME type
+      const blob = new Blob([finalBuffer], { type: VIDEO_MIME_TYPE });
+
+      this.debugLog("✅ Mediabunny encoding completed:", {
+        framesCount: totalFrames,
+        bufferSize: `${(finalBuffer.byteLength / 1024).toFixed(1)} KB`,
+        blobSize: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
+        type: blob.type,
+        mimeType: VIDEO_MIME_TYPE
+      });
+
+      // Validate blob has content
+      if (blob.size === 0) {
+        throw new Error("Encoded blob is empty - encoding failed");
+      }
+
+      return blob;
+
+    } catch (error) {
+      this.debugLog("❌ Mediabunny encoding failed:", error);
+      throw new Error(`Mediabunny encoding failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    // Finalize encoding
-    const finalBuffer = await output.finalize();
-
-    // Create blob from buffer with proper MIME type
-    const blob = new Blob([finalBuffer], { type: VIDEO_MIME_TYPE });
-
-    this.debugLog("✅ Mediabunny encoding completed:", {
-      framesCount: totalFrames,
-      size: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
-      type: blob.type
-    });
-
-    return blob;
   }
 
   private debugLog(...args: unknown[]) {

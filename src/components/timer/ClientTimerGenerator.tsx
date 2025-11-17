@@ -61,7 +61,7 @@ export function ClientTimerGenerator() {
   } | null>(null);
 
   // Debug mode for verbose logging (set to true for debugging iPhone issues)
-  const DEBUG_MODE = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const DEBUG_MODE = true; // Always enable for debugging upload issue
 
   // Debug logging function
   const debugLog = (...args) => {

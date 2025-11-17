@@ -49,15 +49,24 @@ export class TelegramUploader {
       onProgress?.(50);
 
       // Send to Telegram API
+      const requestBody = {
+        video: base64Data,
+        filename: `timer-${Date.now()}.webm`
+      };
+
+      this.debugLog("🔍 Sending to API:", {
+        requestBodySize: JSON.stringify(requestBody).length,
+        videoDataLength: base64Data.length,
+        filename: requestBody.filename,
+        videoDataPrefix: base64Data.substring(0, 50) + "..."
+      });
+
       const response = await fetch('/api/send-to-telegram', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          videoData: base64Data,
-          filename: `timer-${Date.now()}.webm`
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       onProgress?.(75);
@@ -98,9 +107,21 @@ export class TelegramUploader {
    */
   private async blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
+      this.debugLog("🔍 Converting blob to base64:", {
+        blobSize: blob.size,
+        blobType: blob.type,
+        isBlobValid: blob instanceof Blob
+      });
+
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
+
+        this.debugLog("🔍 FileReader result:", {
+          resultLength: result.length,
+          resultPrefix: result.substring(0, 50) + "...",
+          resultSuffix: "..." + result.substring(result.length - 50)
+        });
 
         // Handle different codec prefixes with efficient string-based approach
         let base64Data = result;
@@ -111,6 +132,11 @@ export class TelegramUploader {
         if (prefixIndex !== -1) {
           base64Data = result.substring(prefixIndex + base64Prefix.length);
         }
+
+        this.debugLog("🔍 Final base64 data:", {
+          base64Length: base64Data.length,
+          base64Prefix: base64Data.substring(0, 50) + "..."
+        });
 
         resolve(base64Data);
       };
