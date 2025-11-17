@@ -6,10 +6,19 @@ await import("./src/env.js");
 
 /** @type {import("next").NextConfig} */
 const config = {
-	serverExternalPackages: ["grammy"],
+	serverExternalPackages: ["grammy", "convex"],
 	experimental: {
 		reactCompiler: true,
+		optimizeCss: true,
+		optimizePackageImports: ['lucide-react', '@radix-ui/*'],
 	},
+
+	// Critical bundle optimizations
+	swcMinify: true,
+	compiler: {
+		removeConsole: process.env.NODE_ENV === 'production',
+	},
+	trailingSlash: false,
 
 	// Allow localtunnel origins for development (wildcard for all subdomains)
 	allowedDevOrigins: ["https://telegram-timer-bot-228.loca.lt", "https://*.loca.lt"],
