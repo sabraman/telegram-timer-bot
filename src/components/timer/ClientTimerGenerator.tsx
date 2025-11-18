@@ -33,6 +33,7 @@ import { CacheManager, type CacheAnalysis, type LegacyCacheHit } from "~/service
 import { TimerGenerationService, type TimerGenerationOptions } from "~/services/TimerGenerationService";
 import { TelegramUploader, type UploadOptions } from "~/services/TelegramUploader";
 import { VideoEncoder, type EncodingOptions } from "~/services/VideoEncoder";
+import { TimerTrimmerService } from "~/services/TimerTrimmerService";
 
 // Mediabunny imports for fallback encoding strategy
 import Mediabunny from "mediabunny";
@@ -62,6 +63,7 @@ export function ClientTimerGenerator() {
   const videoUrlRef = useRef<string | null>(null);
   const [isSendingToTelegram, setIsSendingToTelegram] = useState(false);
   const [showLottieSuccess, setShowLottieSuccess] = useState(false);
+  const [generationMethod, setGenerationMethod] = useState<'trimming' | 'frames' | null>(null);
   const videoPreviewRef = useRef<HTMLDivElement>(null);
   const [_cacheInfo, setCacheInfo] = useState<{
     count: number;
@@ -77,6 +79,25 @@ export function ClientTimerGenerator() {
     if (DEBUG_MODE) {
       console.log('🐛 [DEBUG]', ...args);
     }
+  };
+
+  // Helper function to determine which generation method will be used
+  const getGenerationMethod = (totalSeconds: number): 'trimming' | 'frames' => {
+    const timerTrimmer = new TimerTrimmerService(DEBUG_MODE);
+    return timerTrimmer.canHandleDuration(totalSeconds) ? 'trimming' : 'frames';
+  };
+
+  // Helper function to format duration display
+  const formatDuration = (minutes: number, seconds: number): string => {
+    const totalSeconds = minutes * 60 + seconds;
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Individual frame cache for incremental generation (main thread)
@@ -423,10 +444,18 @@ export function ClientTimerGenerator() {
     }
 
     const currentTimerSeconds = getTotalSeconds();
+
+    // Determine and set generation method
+    const method = getGenerationMethod(currentTimerSeconds);
+    setGenerationMethod(method);
+
     console.log("🎯 Generating timer:", {
       minutes,
       seconds,
       totalSeconds: currentTimerSeconds,
+      duration: formatDuration(minutes, seconds),
+      method: method,
+      methodDescription: method === 'trimming' ? 'Fast trimming (≤59:59)' : 'Frame generation (>59:59)',
     });
 
     // Validate timer duration
@@ -475,6 +504,7 @@ export function ClientTimerGenerator() {
     } finally {
       setIsGenerating(false);
       setProgress(0);
+      setGenerationMethod(null); // Reset generation method
     }
   };
 
@@ -555,43 +585,13 @@ export function ClientTimerGenerator() {
   const generateNewTimer = async (currentTimerSeconds: number, cacheAnalysis: CacheAnalysis) => {
     const timerGenerationService = new TimerGenerationService(DEBUG_MODE);
 
-    // Check if we need to use iOS main thread rendering
-    const platformAdapter = getPlatformAdapter();
-    const isIOS = platformAdapter.getPlatformInfo().isIOS;
-    let preRenderedTexts: ImageData[] = null;
+    console.log(`🚀 Starting timer generation for ${currentTimerSeconds}s...`);
+    setGenerationMethod('trimming'); // Default, will be updated by service
 
-    if (isIOS) {
-      console.log("🍎 iOS Detected: Using main thread text rendering approach");
-
-      // Pre-render all text frames in main thread for iOS
-      preRenderedTexts = [];
-      for (let frame = 0; frame < currentTimerSeconds + 1; frame++) {
-        const remainingSeconds = Math.max(0, currentTimerSeconds - frame);
-        const timeText = formatTime(remainingSeconds);
-
-        // Determine font family based on time
-        let fontFamily;
-        if (remainingSeconds <= 9) {
-          fontFamily = 'HeadingNowCondensed';
-        } else if (remainingSeconds < 60) {
-          fontFamily = 'HeadingNowNormal';
-        } else {
-          fontFamily = 'HeadingNowExtended';
-        }
-
-        const textImageData = await renderTimerTextInMainThread(timeText, CANVAS_SIZE, fontFamily);
-        preRenderedTexts.push(textImageData);
-      }
-
-      console.log(`✅ iOS: Pre-rendered ${preRenderedTexts.length} text frames in main thread`);
-    }
-
+    // Let TimerGenerationService choose the optimal method (trimming vs frames)
     const generationOptions: TimerGenerationOptions = {
       totalSeconds: currentTimerSeconds,
       onProgress: setProgress,
-      fontBufferData,
-      generatedFonts,
-      preRenderedTexts,
       debugMode: DEBUG_MODE
     };
 
@@ -601,6 +601,13 @@ export function ClientTimerGenerator() {
       // Validate result
       if (!result || !result.videoBlob) {
         throw new Error("Timer generation failed: No video data returned");
+      }
+
+      // Update generation method based on what was actually used
+      if (result.cacheType === 'trimming') {
+        setGenerationMethod('trimming');
+      } else {
+        setGenerationMethod('frames');
       }
 
       setVideoBlob(result.videoBlob);
@@ -1097,6 +1104,28 @@ export function ClientTimerGenerator() {
             />
           </WheelPickerWrapper>
         </div>
+
+        {/* Duration Info */}
+        <div className="text-center">
+          <div className="text-2xl font-bold text-white mb-2">
+            {formatDuration(minutes, seconds)}
+          </div>
+          {!isGenerating && (
+            <div className="text-xs text-muted-foreground">
+              {getGenerationMethod(getTotalSeconds()) === 'trimming' ? (
+                <span className="flex items-center justify-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                  Will use fast trimming (instant)
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                  Will use frame generation (slower)
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Action Buttons */}
@@ -1131,6 +1160,23 @@ export function ClientTimerGenerator() {
 
       {/* Progress */}
       {isGenerating && <Progress value={progress} className="h-2" />}
+
+      {/* Generation Method Indicator */}
+      {isGenerating && generationMethod && (
+        <div className="text-center text-xs text-muted-foreground mt-1">
+          {generationMethod === 'trimming' ? (
+            <span className="flex items-center justify-center gap-1">
+              <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+              Fast trimming (instant for timers ≤59:59)
+            </span>
+          ) : (
+            <span className="flex items-center justify-center gap-1">
+              <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+              Frame generation (processing {formatDuration(minutes, seconds)})
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Video Preview */}
       {videoUrl && (

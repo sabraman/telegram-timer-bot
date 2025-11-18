@@ -31,7 +31,8 @@
     "bot:set-webhook:prod": "node --env-file=.env.production.local --import tsx/esm src/scripts/bot/set-webhook.ts",
     "bot:health-check": "node --env-file=.env.local --import tsx/esm src/scripts/bot/health-check.ts",
     "deploy:vercel": "vercel --prod",
-    "deploy:full": "pnpm convex:deploy && pnpm deploy:vercel"
+    "deploy:full": "pnpm convex:deploy && pnpm deploy:vercel",
+    "generate-master-video": "bun run scripts/generate-master-video.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -51,6 +52,7 @@
     "@telegram-apps/init-data-node": "^2.0.10",
     "@telegram-apps/sdk-react": "^3.3.6",
     "babel-plugin-react-compiler": "19.0.0-beta-3229e95-20250315",
+    "canvas": "^3.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.25.2",
