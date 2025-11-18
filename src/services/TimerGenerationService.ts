@@ -39,6 +39,7 @@ export interface WorkerMessage {
   preRenderedTexts?: ImageData[];
   workerId: number;
   fontBuffer?: ArrayBuffer;
+  fontLoaded?: boolean;
   isIOS?: boolean;
   debugMode?: boolean;
   platformInfo?: Record<string, unknown>;
@@ -293,6 +294,22 @@ export class TimerGenerationService {
 
     this.debugLog("👷 Creating Web Worker for frame generation...");
 
+    // Load font buffer for worker before creating worker
+    let fontBufferForTransfer: ArrayBuffer | null = null;
+    try {
+      this.debugLog("🔤 Loading font buffer for worker...");
+      const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+      if (!fontResponse.ok) {
+        throw new Error(`Font fetch failed: ${fontResponse.status}`);
+      }
+      const fontBufferData = await fontResponse.arrayBuffer();
+      fontBufferForTransfer = fontBufferData.slice(0); // Create fresh copy for transfer
+      this.debugLog(`✅ Font buffer loaded: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
+    } catch (fontError) {
+      this.debugLog("⚠️ Failed to load font buffer, worker will use fallback fonts:", fontError);
+      fontBufferForTransfer = null;
+    }
+
     // Create Web Worker for frame generation
     const worker = new Worker("/timer-worker.js");
 
@@ -304,10 +321,12 @@ export class TimerGenerationService {
         workerId,
         debugMode: this.debugMode,
         platformInfo: this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>,
+        fontBuffer: fontBufferForTransfer, // Add font buffer to message
+        fontLoaded: !!fontBufferForTransfer,
       };
 
-      // Send message without font data for now (we'll need to pass options in real implementation)
-      await this.sendMessageToWorker(worker, message, null, false);
+      // Send message with font data
+      await this.sendMessageToWorker(worker, message, fontBufferForTransfer, false);
 
       // Handle worker response
       const result = await this.handleWorkerResponse(worker, startTime, onProgress);

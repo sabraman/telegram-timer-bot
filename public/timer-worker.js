@@ -50,7 +50,7 @@ function requiresWebKitWorkarounds(platformInfo) {
 }
 
 self.onmessage = async function(e) {
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -88,7 +88,9 @@ self.onmessage = async function(e) {
     });
 
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
-    console.log(`🔤 Worker received font buffer: ${fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
+    // Use unified font buffer variable (support both property names)
+  const actualFontBuffer = fontBuffer || fontBufferData;
+  console.log(`🔤 Worker received font buffer: ${actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
     console.log(`🍎 iOS Mode: ${platformInfo.isIOS ? 'YES' : 'NO'}`);
 
     // Log generated fonts for non-iOS
@@ -205,14 +207,14 @@ self.onmessage = async function(e) {
       console.log("✅ iOS: Skipping worker font registration, using main thread fonts");
     }
     // Non-iOS: Register fonts in worker as usual
-    else if (fontBuffer && typeof FontFace !== 'undefined') {
+    else if (actualFontBuffer && typeof FontFace !== 'undefined') {
       try {
         console.log("🔤 Registering font faces in Web Worker...");
 
         // Create separate font faces for each variation
         const fontFaces = [
           // State 1: Ultra-condensed (width 1000) for 0-9 seconds
-          new FontFace('HeadingNowCondensed', fontBuffer, {
+          new FontFace('HeadingNowCondensed', actualFontBuffer, {
             weight: FONT_WEIGHT_HEAVY,
             stretch: 'ultra-condensed',
             style: 'normal',
@@ -221,7 +223,7 @@ self.onmessage = async function(e) {
           }),
 
           // State 2: Condensed (width 410) for 10-60 seconds (two digits)
-          new FontFace('HeadingNowNormal', fontBuffer, {
+          new FontFace('HeadingNowNormal', actualFontBuffer, {
             weight: FONT_WEIGHT_HEAVY,
             stretch: 'condensed',
             style: 'normal',
@@ -230,7 +232,7 @@ self.onmessage = async function(e) {
           }),
 
           // State 3: Extended (width 170) for MM:SS format
-          new FontFace('HeadingNowExtended', fontBuffer, {
+          new FontFace('HeadingNowExtended', actualFontBuffer, {
             weight: FONT_WEIGHT_HEAVY,
             stretch: 'ultra-expanded',
             style: 'normal',
@@ -250,7 +252,7 @@ self.onmessage = async function(e) {
               family: fontFace.family,
               weight: fontFace.weight,
               stretch: fontFace.stretch,
-              hasBuffer: !!fontBuffer
+              hasBuffer: !!actualFontBuffer
             });
 
             // Load the font face
@@ -299,8 +301,8 @@ self.onmessage = async function(e) {
         console.error("❌ Font registration process failed:", {
           error: fontError.message,
           stack: fontError.stack,
-          fontBufferAvailable: !!fontBuffer,
-          fontBufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+          fontBufferAvailable: !!actualFontBuffer,
+          fontBufferSize: actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
           isWebKit
         });
 
@@ -310,9 +312,9 @@ self.onmessage = async function(e) {
       if (!platformInfo.isIOS) {
         console.log("⚠️ No font buffer available or FontFace API not supported in worker");
         console.log("🔤 Font Registration Prerequisites Check:", {
-          fontBufferAvailable: !!fontBuffer,
+          fontBufferAvailable: !!actualFontBuffer,
           fontFaceConstructorAvailable: typeof FontFace !== 'undefined',
-          bufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+          bufferSize: actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
           isWebKit: platformInfo.isWebKit
         });
       }
@@ -532,7 +534,7 @@ self.onmessage = async function(e) {
           timeText: timeText,
           textWidth: finalMetrics.width.toFixed(1) + 'px',
           fontsRegistered: fontsRegistered,
-          fontBufferAvailable: !!fontBuffer
+          fontBufferAvailable: !!actualFontBuffer
         });
       }
 
