@@ -46,9 +46,11 @@ vi.mock('~/adapters/platform-adapter', () => ({
     getPlatformInfo: () => ({
       userAgent: 'Test User Agent',
       platform: 'test',
+      isIOS: false,
       isWebKit: false,
-      isWebkit: false,
       isSafari: false,
+      isChrome: false,
+      isFirefox: false,
       supportsOffscreenCanvas: true,
     }),
     getCapabilities: () => ({
