@@ -592,7 +592,11 @@ export function ClientTimerGenerator() {
     const generationOptions: TimerGenerationOptions = {
       totalSeconds: currentTimerSeconds,
       onProgress: setProgress,
-      debugMode: DEBUG_MODE
+      debugMode: DEBUG_MODE,
+      // CRITICAL FIX: Pass font data to solve WebWorker font loading issues
+      fontBufferData: fontBufferData,
+      generatedFonts: generatedFonts,
+      preRenderedTexts: [] // Will be populated for iOS if needed
     };
 
     try {
@@ -1106,7 +1110,7 @@ export function ClientTimerGenerator() {
         </div>
 
         {/* Duration Info */}
-        <div className="text-center">
+        {/* <div className="text-center">
           <div className="text-2xl font-bold text-white mb-2">
             {formatDuration(minutes, seconds)}
           </div>
@@ -1125,7 +1129,7 @@ export function ClientTimerGenerator() {
               )}
             </div>
           )}
-        </div>
+        </div> */}
       </div>
 
       {/* Action Buttons */}
@@ -1150,7 +1154,7 @@ export function ClientTimerGenerator() {
           {isGenerating ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              {progress}%
+              {Math.round(progress)}%
             </>
           ) : (
             <Check className="h-5 w-5" />
@@ -1159,24 +1163,7 @@ export function ClientTimerGenerator() {
       </div>
 
       {/* Progress */}
-      {isGenerating && <Progress value={progress} className="h-2" />}
-
-      {/* Generation Method Indicator */}
-      {isGenerating && generationMethod && (
-        <div className="text-center text-xs text-muted-foreground mt-1">
-          {generationMethod === 'trimming' ? (
-            <span className="flex items-center justify-center gap-1">
-              <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
-              Fast trimming (instant for timers ≤59:59)
-            </span>
-          ) : (
-            <span className="flex items-center justify-center gap-1">
-              <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
-              Frame generation (processing {formatDuration(minutes, seconds)})
-            </span>
-          )}
-        </div>
-      )}
+      {/* {isGenerating && <Progress value={progress} className="h-2" />} */}
 
       {/* Video Preview */}
       {videoUrl && (
