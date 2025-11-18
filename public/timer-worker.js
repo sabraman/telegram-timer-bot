@@ -51,7 +51,7 @@ function requiresWebKitWorkarounds(platformInfo) {
 
 self.onmessage = async function(e) {
   // CRITICAL FIX: Extract fontBufferData correctly from message
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate, platformInfo } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -295,7 +295,7 @@ self.onmessage = async function(e) {
             });
 
             // WebKit-specific error logging
-            if (isWebKit) {
+            if (platformInfo && platformInfo.isWebKit) {
               console.error("🍎 WebKit Font Registration Failed:", {
                 fontFamily: fontFace.family,
                 webKitLimitation: "FontFace API in Web Workers has limited support",
@@ -320,7 +320,7 @@ self.onmessage = async function(e) {
           stack: fontError.stack,
           fontBufferAvailable: !!fontBuffer,
           fontBufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
-          isWebKit
+          isWebKit: platformInfo ? platformInfo.isWebKit : 'undefined'
         });
 
         fontsRegistered = false;
@@ -527,7 +527,7 @@ self.onmessage = async function(e) {
         }
 
         // WebKit-specific font application logging
-        if (isWebKit) {
+        if (platformInfo && platformInfo.isWebKit) {
           console.log("🍎 WebKit Font Application Summary:", {
             attemptedFont: fontSettings.font,
             actualFont: ctx.font,
@@ -541,7 +541,7 @@ self.onmessage = async function(e) {
           error: e.message,
           attemptedFont: fontSettings.font,
           fontSettings: fontSettings,
-          isWebKit,
+          isWebKit: platformInfo ? platformInfo.isWebKit : 'undefined',
           fontsRegistered
         });
 
