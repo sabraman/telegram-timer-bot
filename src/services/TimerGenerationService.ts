@@ -334,16 +334,19 @@ export class TimerGenerationService {
     startTime: number,
     totalFrames: number
   ): Promise<GenerationResult> {
-    this.debugLog(`🧩 Starting chunked frame generation: ${totalSeconds}s (${totalFrames} frames)`);
+    this.debugLog(`🧩 Starting adaptive chunked frame generation: ${totalSeconds}s (${totalFrames} frames)`);
 
     // Constants matching WebWorker
     const CANVAS_SIZE = 512;
     const SINGLE_DIGIT_MAX = 9; // 0-9 seconds
     const MM_SS_THRESHOLD = 60; // 60+ seconds
-    const CHUNK_SIZE = 100; // Process 100 frames per chunk to avoid memory issues
-    const chunks = Math.ceil(totalFrames / CHUNK_SIZE);
 
-    this.debugLog(`📦 Will process ${chunks} chunks of ${CHUNK_SIZE} frames each`);
+    // Adaptive chunk size calculation based on memory and duration
+    const memoryConfig = this.calculateMemoryConfig(totalFrames);
+    const chunks = Math.ceil(totalFrames / memoryConfig.chunkSize);
+
+    this.debugLog(`📦 Adaptive config: ${chunks} chunks of ${memoryConfig.chunkSize} frames each`);
+    this.debugLog(`🧠 Memory status: ${memoryConfig.memoryStatus}, recommendations: ${memoryConfig.recommendations.join(', ')}`);
 
     // Extracted WebWorker functions
     const formatTime = (seconds: number): string => {
@@ -404,10 +407,10 @@ export class TimerGenerationService {
       const allFrames: ImageData[] = [];
       let framesProcessed = 0;
 
-      // Process frames in chunks exactly like WebWorker but with memory management
+      // Process frames in chunks exactly like WebWorker but with adaptive memory management
       for (let chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-        const startFrame = chunkIndex * CHUNK_SIZE;
-        const endFrame = Math.min(startFrame + CHUNK_SIZE, totalFrames);
+        const startFrame = chunkIndex * memoryConfig.chunkSize;
+        const endFrame = Math.min(startFrame + memoryConfig.chunkSize, totalFrames);
 
         this.debugLog(`🔄 Processing chunk ${chunkIndex + 1}/${chunks}: frames ${startFrame}-${endFrame - 1}`);
 
@@ -440,13 +443,23 @@ export class TimerGenerationService {
         const progress = (framesProcessed / totalFrames) * 100;
         onProgress(progress);
 
+        // Check memory usage between chunks for monitoring
+        if (chunkIndex % 5 === 0 || memoryConfig.memoryStatus !== 'healthy') { // Check every 5 chunks or if memory pressure detected
+          const currentMemory = MemoryMonitor.checkMemoryThresholds({ warning: 50, critical: 80 });
+          if (currentMemory.level === 'critical' || currentMemory.level === 'emergency') {
+            this.debugLog(`⚠️ High memory pressure detected during generation: ${currentMemory.message}`);
+            // Force immediate cleanup for critical situations
+            if (global.gc) global.gc();
+          }
+        }
+
         // Force garbage collection if available between chunks
         if (global.gc) {
           global.gc();
         }
 
-        // Small delay to allow memory cleanup
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // Adaptive delay to allow memory cleanup based on memory pressure
+        await new Promise(resolve => setTimeout(resolve, memoryConfig.cleanupDelay));
       }
 
       this.debugLog(`✅ All ${allFrames.length} frames generated successfully`);
@@ -470,16 +483,94 @@ export class TimerGenerationService {
         videoUrl: url,
         totalTime,
         fromCache: false,
-        cacheType: 'chunked-generation',
+        cacheType: 'adaptive-chunked-generation',
         extractedFrames: totalFrames,
       };
 
     } catch (error) {
-      this.debugLog(`❌ Chunked generation failed:`, error);
-      throw new Error(`Chunked timer generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.debugLog(`❌ Adaptive chunked generation failed:`, error);
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Enhanced error handling with specific recommendations
+      if (errorMessage.includes('memory') || errorMessage.includes('OutOfMemoryError')) {
+        throw new Error(`Memory error during timer generation. Try closing other applications or generating a shorter timer. Details: ${errorMessage}`);
+      } else if (errorMessage.includes('canvas') || errorMessage.includes('context')) {
+        throw new Error(`Canvas rendering error. This may be due to graphics driver issues. Try refreshing the page. Details: ${errorMessage}`);
+      } else if (errorMessage.includes('VideoEncoder')) {
+        throw new Error(`Video encoding failed. Your browser may not support video creation. Details: ${errorMessage}`);
+      } else {
+        throw new Error(`Timer generation failed: ${errorMessage}. This could be due to high memory usage or browser limitations.`);
+      }
     }
   }
 
+
+  /**
+   * Calculate optimal memory configuration based on device capabilities
+   */
+  private calculateMemoryConfig(totalFrames: number): {
+    chunkSize: number;
+    memoryStatus: string;
+    cleanupDelay: number;
+    recommendations: string[];
+  } {
+    // Get current memory usage
+    const memoryInfo = MemoryMonitor.checkMemoryThresholds({ warning: 50, critical: 80 });
+
+    let chunkSize: number;
+    let memoryStatus: string;
+    let cleanupDelay: number;
+    const recommendations: string[] = [];
+
+    // Memory-based chunk sizing
+    if (memoryInfo.level === 'emergency') {
+      chunkSize = 25;  // Very small chunks for emergency memory situations
+      memoryStatus = 'emergency';
+      cleanupDelay = 50;  // Longer cleanup delay
+      recommendations.push('Very low memory detected', 'Using minimal chunk sizes', 'Consider closing other apps');
+    } else if (memoryInfo.level === 'critical') {
+      chunkSize = 50;  // Small chunks for critical memory pressure
+      memoryStatus = 'critical';
+      cleanupDelay = 30;
+      recommendations.push('High memory pressure detected', 'Using conservative chunk sizes');
+    } else if (memoryInfo.level === 'warning') {
+      chunkSize = 75;  // Moderate chunks for warning level
+      memoryStatus = 'warning';
+      cleanupDelay = 20;
+      recommendations.push('Moderate memory usage');
+    } else {
+      chunkSize = 100; // Default optimal size for healthy memory
+      memoryStatus = 'healthy';
+      cleanupDelay = 10;
+      recommendations.push('Memory usage is optimal');
+    }
+
+    // Duration-based adjustments for very large timers
+    if (totalFrames > 7200) {  // 2+ hours
+      if (memoryStatus === 'healthy') {
+        chunkSize = 150;  // Larger chunks for very long timers on capable devices
+        recommendations.push('Large timer detected, using optimized chunk sizes');
+      }
+    } else if (totalFrames > 3600) {  // 1+ hour
+      if (memoryStatus === 'healthy') {
+        chunkSize = 125;  // Medium-large chunks for hour+ timers
+        recommendations.push('Long timer detected, using medium chunk sizes');
+      }
+    }
+
+    // Ensure minimum and maximum bounds
+    chunkSize = Math.max(25, Math.min(200, chunkSize));
+
+    this.debugLog(`🧠 Memory config calculated: status=${memoryStatus}, chunkSize=${chunkSize}, delay=${cleanupDelay}ms`);
+
+    return {
+      chunkSize,
+      memoryStatus,
+      cleanupDelay,
+      recommendations
+    };
+  }
 
   /**
    * Debug logging function
