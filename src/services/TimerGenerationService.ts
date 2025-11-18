@@ -355,23 +355,59 @@ export class TimerGenerationService {
   ): Promise<GenerationResult> {
     this.debugLog(`🧩 Starting adaptive chunked frame generation: ${totalSeconds}s (${totalFrames} frames)`);
 
-    // Load HeadingNow font for main thread rendering
+    // Load HeadingNow font for main thread rendering - create separate font faces like WebWorker
     let fontLoaded = false;
     try {
       this.debugLog("🔤 Loading HeadingNow font for main thread chunked generation...");
       const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
       if (fontResponse.ok) {
         const fontBufferData = await fontResponse.arrayBuffer();
-        const fontFace = new FontFace('HeadingNowVariable', fontBufferData);
-        await fontFace.load();
-        document.fonts.add(fontFace);
+
+        // Create separate font faces exactly like WebWorker
+        const fontFaces = [
+          // State 1: Ultra-condensed (width 1000) for 0-9 seconds
+          new FontFace('HeadingNowCondensed', fontBufferData, {
+            weight: FONT_WEIGHT_HEAVY,
+            stretch: 'ultra-condensed',
+            style: 'normal',
+            display: 'swap',
+            variationSettings: `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_ULTRA_CONDENSED}`
+          }),
+          // State 2: Condensed (width 410) for 10-59 seconds
+          new FontFace('HeadingNowNormal', fontBufferData, {
+            weight: FONT_WEIGHT_HEAVY,
+            stretch: 'condensed',
+            style: 'normal',
+            display: 'swap',
+            variationSettings: `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_CONDENSED}`
+          }),
+          // State 3: Extended (width 170) for MM:SS format
+          new FontFace('HeadingNowExtended', fontBufferData, {
+            weight: FONT_WEIGHT_HEAVY,
+            stretch: 'ultra-expanded',
+            style: 'normal',
+            display: 'swap',
+            variationSettings: `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_EXTENDED}`
+          })
+        ];
+
+        // Load and register all font faces
+        for (let i = 0; i < fontFaces.length; i++) {
+          const fontFace = fontFaces[i];
+          this.debugLog(`🔤 Loading font face ${i + 1}/${fontFaces.length}: ${fontFace.family}`);
+          await fontFace.load();
+          this.debugLog(`✅ Font face loaded: ${fontFace.family}`);
+          document.fonts.add(fontFace);
+          this.debugLog(`✅ Font face registered: ${fontFace.family}`);
+        }
+
         fontLoaded = true;
-        this.debugLog(`✅ HeadingNow font loaded successfully: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+        this.debugLog(`✅ All HeadingNow font faces loaded successfully: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
       } else {
         throw new Error(`Font fetch failed: ${fontResponse.status}`);
       }
     } catch (fontError) {
-      this.debugLog("⚠️ Failed to load HeadingNow font, will use fallback Arial fonts:", fontError);
+      this.debugLog("⚠️ Failed to load HeadingNow fonts, will use fallback Arial fonts:", fontError);
       fontLoaded = false;
     }
 
@@ -416,32 +452,28 @@ export class TimerGenerationService {
       };
 
       if (fontLoaded) {
-        // Use HeadingNow Variable font with exact WebWorker logic
-        let fontName = 'HeadingNowVariable';
-        let variations: string | null = null;
+        // Use separate font faces exactly like WebWorker
+        let fontName: string;
 
         if (remainingSeconds <= SINGLE_DIGIT_MAX) {
           // State 1: Ultra-condensed for 0-9s (single digit)
-          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_ULTRA_CONDENSED}`;
-          fontName = 'HeadingNowVariable (Ultra-Condensed)';
+          fontName = 'HeadingNowCondensed'; // Match WebWorker font face name
         } else if (remainingSeconds < MM_SS_THRESHOLD) {
           // State 2: Condensed for 10-59s (two digits)
-          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_CONDENSED}`;
-          fontName = 'HeadingNowVariable (Condensed)';
+          fontName = 'HeadingNowNormal';    // Match WebWorker font face name
         } else {
           // State 3: Extended for MM:SS format (60+ seconds)
-          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_EXTENDED}`;
-          fontName = 'HeadingNowVariable (Extended)';
+          fontName = 'HeadingNowExtended';  // Match WebWorker font face name
         }
 
         fontSettings = {
-          font: `${FONT_WEIGHT_HEAVY} ${baseSize}px ${'HeadingNowVariable'}`,
-          variations,
+          font: `${baseSize}px ${fontName}`,
+          variations: null, // No variations needed - using separate font faces like WebWorker
           name: fontName,
           baseSize
         };
 
-        this.debugLog(`✅ HeadingNow font: ${fontName} (${remainingSeconds}s), format: ${remainingSeconds <= SINGLE_DIGIT_MAX ? 'Single digit' : remainingSeconds < MM_SS_THRESHOLD ? 'Two digits' : 'MM:SS'}`);
+        this.debugLog(`✅ Using registered font face: ${fontName} (${remainingSeconds}s), format: ${remainingSeconds <= SINGLE_DIGIT_MAX ? 'Single digit' : remainingSeconds < MM_SS_THRESHOLD ? 'Two digits' : 'MM:SS'}`);
       } else {
         // Fallback to Arial fonts if HeadingNow not loaded - match WebWorker logic
         let fontName: string;
@@ -513,10 +545,9 @@ export class TimerGenerationService {
           const fontSettings = getFontSettings(remainingSeconds);
           ctx.font = fontSettings.font;
 
-          // Apply font variation settings for HeadingNow Variable font
-          if (fontLoaded && fontSettings.variations && ctx.fontVariationSettings !== undefined) {
-            ctx.fontVariationSettings = fontSettings.variations;
-            this.debugLog(`🔧 Applied font variations: ${fontSettings.variations}`);
+          // No font variation settings needed - using separate font faces like WebWorker
+          if (fontLoaded) {
+            this.debugLog(`✅ Using registered font: ${fontSettings.name}`);
           }
 
           // Format time based on remaining seconds
