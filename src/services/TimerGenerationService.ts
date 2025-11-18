@@ -355,8 +355,33 @@ export class TimerGenerationService {
   ): Promise<GenerationResult> {
     this.debugLog(`🧩 Starting adaptive chunked frame generation: ${totalSeconds}s (${totalFrames} frames)`);
 
+    // Load HeadingNow font for main thread rendering
+    let fontLoaded = false;
+    try {
+      this.debugLog("🔤 Loading HeadingNow font for main thread chunked generation...");
+      const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+      if (fontResponse.ok) {
+        const fontBufferData = await fontResponse.arrayBuffer();
+        const fontFace = new FontFace('HeadingNowVariable', fontBufferData);
+        await fontFace.load();
+        document.fonts.add(fontFace);
+        fontLoaded = true;
+        this.debugLog(`✅ HeadingNow font loaded successfully: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+      } else {
+        throw new Error(`Font fetch failed: ${fontResponse.status}`);
+      }
+    } catch (fontError) {
+      this.debugLog("⚠️ Failed to load HeadingNow font, will use fallback Arial fonts:", fontError);
+      fontLoaded = false;
+    }
+
     // Constants matching WebWorker
     const CANVAS_SIZE = 512;
+    const FONT_BASE_SIZE = 670;
+    const FONT_WEIGHT_HEAVY = '1000';
+    const FONT_WIDTH_ULTRA_CONDENSED = '1000'; // For 0-9 seconds
+    const FONT_WIDTH_CONDENSED = '410'; // For 10-59 seconds
+    const FONT_WIDTH_EXTENDED = '170'; // For MM:SS format
     const SINGLE_DIGIT_MAX = 9; // 0-9 seconds
     const MM_SS_THRESHOLD = 60; // 60+ seconds
 
@@ -380,23 +405,65 @@ export class TimerGenerationService {
 
     const getFontSettings = (remainingSeconds: number) => {
       // Use maximum font size for all states
-      const baseSize = CANVAS_SIZE; // Maximum size for all formats (full canvas height)
+      const baseSize = FONT_BASE_SIZE;
 
-      let fontName: string;
+      let fontSettings: {
+        font: string;
+        name: string;
+        baseSize: number;
+        variations?: string | null;
+      };
 
-      if (remainingSeconds <= SINGLE_DIGIT_MAX) {
-        fontName = 'Arial Black'; // State 1: 0-9s - bold condensed
-      } else if (remainingSeconds < MM_SS_THRESHOLD) {
-        fontName = 'Arial'; // State 2: 10-59s - normal
+      if (fontLoaded) {
+        // Use HeadingNow Variable font with proper width variations
+        let fontName = 'HeadingNowVariable';
+        let variations: string | null = null;
+
+        if (remainingSeconds <= SINGLE_DIGIT_MAX) {
+          // State 1: Ultra-condensed for 0-9s
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_ULTRA_CONDENSED}`;
+          fontName = 'HeadingNowVariable (Ultra-Condensed)';
+        } else if (remainingSeconds < MM_SS_THRESHOLD) {
+          // State 2: Condensed for 10-59s
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_CONDENSED}`;
+          fontName = 'HeadingNowVariable (Condensed)';
+        } else {
+          // State 3: Extended for MM:SS format
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_EXTENDED}`;
+          fontName = 'HeadingNowVariable (Extended)';
+        }
+
+        fontSettings = {
+          font: `${FONT_WEIGHT_HEAVY} ${baseSize}px ${'HeadingNowVariable'}`,
+          variations,
+          name: fontName,
+          baseSize
+        };
+
+        this.debugLog(`✅ Using HeadingNow font: ${fontName}, variations: ${variations}`);
       } else {
-        fontName = 'Arial'; // State 3: >=60s (MM:SS format) - extended
+        // Fallback to Arial fonts if HeadingNow not loaded
+        let fontName: string;
+
+        if (remainingSeconds <= SINGLE_DIGIT_MAX) {
+          fontName = 'Arial Black'; // Best fallback for single digits
+        } else if (remainingSeconds < MM_SS_THRESHOLD) {
+          fontName = 'Arial'; // Regular Arial for two digits
+        } else {
+          fontName = 'Arial'; // Regular Arial for MM:SS
+        }
+
+        fontSettings = {
+          font: `bold ${baseSize}px ${fontName}`,
+          variations: null,
+          name: fontName,
+          baseSize
+        };
+
+        this.debugLog(`⚠️ Using fallback font: ${fontName} (HeadingNow not loaded)`);
       }
 
-      return {
-        font: `bold ${baseSize}px ${fontName}`,
-        name: fontName,
-        baseSize
-      };
+      return fontSettings;
     };
 
     try {
@@ -444,6 +511,12 @@ export class TimerGenerationService {
           // Get dynamic font settings based on remaining time
           const fontSettings = getFontSettings(remainingSeconds);
           ctx.font = fontSettings.font;
+
+          // Apply font variation settings for HeadingNow Variable font
+          if (fontLoaded && fontSettings.variations && ctx.fontVariationSettings !== undefined) {
+            ctx.fontVariationSettings = fontSettings.variations;
+            this.debugLog(`🔧 Applied font variations: ${fontSettings.variations}`);
+          }
 
           // Format time based on remaining seconds
           const timeText = formatTime(remainingSeconds);
