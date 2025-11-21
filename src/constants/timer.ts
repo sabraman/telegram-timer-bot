@@ -40,7 +40,7 @@ export const LEGACY_VP9_CODEC = 'vp09.00.10.08';
 // Font & Typography Constants
 // ===================================
 
-export const FONT_BASE_SIZE = 670; // Base font size for timer text
+export const FONT_BASE_SIZE = 200; // Base font size for timer text
 export const FONT_WEIGHT_HEAVY = '1000';
 
 // Variable font width settings for different timer states

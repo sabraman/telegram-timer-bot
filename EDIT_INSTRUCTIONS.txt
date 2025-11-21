@@ -1,0 +1,17 @@
+Location: src/services/TimerGenerationService.ts - Line 326  
+After the line: `fontLoaded: !!fontBufferForTransfer,`  
+Add: `fontSize: FONT_BASE_SIZE, // Pass configurable font size to worker`
+
+The complete object should look like:
+```typescript
+const message: WorkerMessage = {
+  action: 'generate',
+  timerSeconds: totalSeconds,
+  workerId,
+  debugMode: this.debugMode,
+  platformInfo: this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>,
+  fontBuffer: fontBufferForTransfer ?? undefined, // Add font buffer to message
+  fontLoaded: !!fontBufferForTransfer,
+  fontSize: FONT_BASE_SIZE, // Pass configurable font size to worker
+};
+```

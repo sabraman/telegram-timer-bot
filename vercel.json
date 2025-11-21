@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "pnpm build:prod",
   "devCommand": "pnpm dev",
-  "installCommand": "pnpm install",
+  "installCommand": "bun install --no-frozen-lockfile",
   "framework": "nextjs",
   "functions": {
     "src/app/api/bot/route.ts": {

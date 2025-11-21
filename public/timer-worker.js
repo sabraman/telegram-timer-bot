@@ -34,9 +34,9 @@ function getWorkerPlatformInfo(userAgent) {
     isChrome,
     userAgent: ua,
     platform: isIOS ? 'iOS' :
-            /Mac/.test(ua) ? 'macOS' :
-            /Win/.test(ua) ? 'Windows' :
-            /Android/.test(ua) ? 'Android' :
+      /Mac/.test(ua) ? 'macOS' :
+        /Win/.test(ua) ? 'Windows' :
+          /Android/.test(ua) ? 'Android' :
             /Linux/.test(ua) ? 'Linux' : 'Unknown'
   };
 }
@@ -49,8 +49,8 @@ function requiresWebKitWorkarounds(platformInfo) {
   return platformInfo.isWebKit && !platformInfo.isChrome;
 }
 
-self.onmessage = async function(e) {
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
+self.onmessage = async function (e) {
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, fontSize = 512, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -58,6 +58,9 @@ self.onmessage = async function(e) {
       console.log('🐛 [WORKER DEBUG]', ...args);
     }
   };
+
+  // Always log fontSize to debug
+  console.log('🔤 [WORKER] Received fontSize:', fontSize, 'from message data:', e.data.fontSize);
 
   try {
     if (action !== 'generate') {
@@ -89,8 +92,8 @@ self.onmessage = async function(e) {
 
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
     // Use unified font buffer variable (support both property names)
-  const actualFontBuffer = fontBuffer || fontBufferData;
-  console.log(`🔤 Worker received font buffer: ${actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
+    const actualFontBuffer = fontBuffer || fontBufferData;
+    console.log(`🔤 Worker received font buffer: ${actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
     console.log(`🍎 iOS Mode: ${platformInfo.isIOS ? 'YES' : 'NO'}`);
 
     // Log generated fonts for non-iOS
@@ -362,7 +365,7 @@ self.onmessage = async function(e) {
     // Dynamic font settings function using separate font faces
     function getFontSettings(remainingSeconds) {
       // Use maximum font size for all states
-      const baseSize = CANVAS_SIZE; // Maximum size for all formats (full canvas height)
+      const baseSize = fontSize; // Passed from main thread via FONT_BASE_SIZE constant
 
       let fontName;
 
@@ -418,7 +421,7 @@ self.onmessage = async function(e) {
     });
 
     // Generate frames (all or subset)
-    const frameIndices = isPartialGeneration ? framesToGenerate : Array.from({length: totalFrames}, (_, i) => i);
+    const frameIndices = isPartialGeneration ? framesToGenerate : Array.from({ length: totalFrames }, (_, i) => i);
 
     for (let i = 0; i < frameIndices.length; i++) {
       const frame = frameIndices[i];
@@ -558,7 +561,7 @@ self.onmessage = async function(e) {
           isPartialGeneration
         });
       }
-      }
+    }
 
     console.log(`🔨 WORKER: Generated ${frames.length} frames for ${timerSeconds}s timer (${isPartialGeneration ? 'partial' : 'complete'} generation)`);
 

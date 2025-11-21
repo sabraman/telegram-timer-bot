@@ -1,0 +1,10 @@
+--- TimerGenerationService.ts	(original)
++++ TimerGenerationService.ts	(modified)
+@@ -323,6 +323,7 @@
+         platformInfo: this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>,
+         fontBuffer: fontBufferForTransfer ?? undefined, // Add font buffer to message
+         fontLoaded: !!fontBufferForTransfer,
++        fontSize: FONT_BASE_SIZE, // Pass configurable font size to worker
+       };
+ 
+       // Send message with font data

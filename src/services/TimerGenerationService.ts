@@ -1,5 +1,5 @@
 import { getPlatformAdapter } from "~/adapters/platform-adapter";
-import { TIMER_FPS } from "~/constants/timer";
+import { TIMER_FPS, FONT_BASE_SIZE } from "~/constants/timer";
 import { VideoEncoder, type EncodingOptions } from "./VideoEncoder";
 import { MemoryMonitor } from "~/lib/memory-monitor";
 import { TimerTrimmerService, type TrimResult } from "./TimerTrimmerService";
@@ -43,6 +43,7 @@ export interface WorkerMessage {
   isIOS?: boolean;
   debugMode?: boolean;
   platformInfo?: Record<string, unknown>;
+  fontSize?: number;
 }
 
 export interface WorkerResponse {
@@ -323,6 +324,7 @@ export class TimerGenerationService {
         platformInfo: this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>,
         fontBuffer: fontBufferForTransfer ?? undefined, // Add font buffer to message
         fontLoaded: !!fontBufferForTransfer,
+        fontSize: FONT_BASE_SIZE, // Pass configurable font size to worker
       };
 
       // Send message with font data
