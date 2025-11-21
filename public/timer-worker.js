@@ -50,8 +50,7 @@ function requiresWebKitWorkarounds(platformInfo) {
 }
 
 self.onmessage = async function(e) {
-  // CRITICAL FIX: Extract fontBufferData correctly from message
-  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate, platformInfo } = e.data;
+  const { timerSeconds, workerId, action, fontLoaded, fontBuffer, fontBufferData, generatedFonts, preRenderedTexts, isIOS = false, debugMode = false, framesToGenerate } = e.data;
 
   // Debug logging function for worker
   const debugLog = (...args) => {
@@ -88,27 +87,11 @@ self.onmessage = async function(e) {
       }
     });
 
-    // CRITICAL FIX: Enhanced font data logging for debugging
-    // Use fontBufferData (new field) or fallback to fontBuffer (old field)
-    const actualFontBuffer = fontBufferData || fontBuffer;
-
     console.log(`🔤 Worker received font status: ${fontLoaded ? 'LOADED' : 'NOT LOADED'}`);
-    console.log(`🔤 Worker received fontBufferData: ${fontBufferData ? `${(fontBufferData.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
-    console.log(`🔤 Worker received fontBuffer (legacy): ${fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
-    console.log(`🔤 Worker using actual font buffer: ${actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
+    // Use unified font buffer variable (support both property names)
+  const actualFontBuffer = fontBuffer || fontBufferData;
+  console.log(`🔤 Worker received font buffer: ${actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'NONE'}`);
     console.log(`🍎 iOS Mode: ${platformInfo.isIOS ? 'YES' : 'NO'}`);
-
-    // Enhanced font data debugging
-    console.log(`🔧 Font Data Analysis:`, {
-        hasFontBufferData: !!fontBufferData,
-        hasFontBufferLegacy: !!fontBuffer,
-        hasActualFontBuffer: !!actualFontBuffer,
-        hasGeneratedFonts: !!generatedFonts,
-        hasPreRenderedTexts: !!preRenderedTexts,
-        isIOS: platformInfo.isIOS,
-        fontFaceConstructor: typeof FontFace !== 'undefined',
-        fontsAPI: typeof self !== 'undefined' && typeof self.fonts !== 'undefined'
-    });
 
     // Log generated fonts for non-iOS
     if (generatedFonts && !platformInfo.isIOS) {
@@ -226,7 +209,7 @@ self.onmessage = async function(e) {
     // Non-iOS: Register fonts in worker as usual
     else if (actualFontBuffer && typeof FontFace !== 'undefined') {
       try {
-        console.log("🔤 Registering font faces in Web Worker with fontBufferData...");
+        console.log("🔤 Registering font faces in Web Worker...");
 
         // Create separate font faces for each variation
         const fontFaces = [
@@ -269,7 +252,7 @@ self.onmessage = async function(e) {
               family: fontFace.family,
               weight: fontFace.weight,
               stretch: fontFace.stretch,
-              hasBuffer: !!fontBuffer
+              hasBuffer: !!actualFontBuffer
             });
 
             // Load the font face
@@ -295,7 +278,7 @@ self.onmessage = async function(e) {
             });
 
             // WebKit-specific error logging
-            if (platformInfo && platformInfo.isWebKit) {
+            if (isWebKit) {
               console.error("🍎 WebKit Font Registration Failed:", {
                 fontFamily: fontFace.family,
                 webKitLimitation: "FontFace API in Web Workers has limited support",
@@ -318,33 +301,22 @@ self.onmessage = async function(e) {
         console.error("❌ Font registration process failed:", {
           error: fontError.message,
           stack: fontError.stack,
-          fontBufferAvailable: !!fontBuffer,
-          fontBufferSize: fontBuffer ? `${(fontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
-          isWebKit: platformInfo ? platformInfo.isWebKit : 'undefined'
+          fontBufferAvailable: !!actualFontBuffer,
+          fontBufferSize: actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
+          isWebKit
         });
 
         fontsRegistered = false;
       }
     } else {
       if (!platformInfo.isIOS) {
-        // CRITICAL FIX: Enhanced font fallback handling
-        console.warn("⚠️ CUSTOM FONT LOADING FAILED - Using fallback fonts");
-        console.log("🔧 Font Registration Prerequisites Check:", {
-          fontBufferDataAvailable: !!fontBufferData,
-          fontBufferLegacyAvailable: !!fontBuffer,
-          actualFontBufferAvailable: !!actualFontBuffer,
-          generatedFontsAvailable: !!generatedFonts,
+        console.log("⚠️ No font buffer available or FontFace API not supported in worker");
+        console.log("🔤 Font Registration Prerequisites Check:", {
+          fontBufferAvailable: !!actualFontBuffer,
           fontFaceConstructorAvailable: typeof FontFace !== 'undefined',
-          fontsAPIAvailable: typeof self !== 'undefined' && typeof self.fonts !== 'undefined',
           bufferSize: actualFontBuffer ? `${(actualFontBuffer.byteLength / 1024).toFixed(1)} KB` : 'none',
           isWebKit: platformInfo.isWebKit
         });
-
-        // Set fontsRegistered to false to trigger fallback behavior
-        fontsRegistered = false;
-
-        console.warn("⚠️ Using fallback font: Arial Black (custom fonts not registered in worker)");
-        console.warn("💡 To fix: Ensure fontBufferData is properly transmitted from main thread");
       }
       // For iOS, fontsRegistered is already set to true above
     }
@@ -527,7 +499,7 @@ self.onmessage = async function(e) {
         }
 
         // WebKit-specific font application logging
-        if (platformInfo && platformInfo.isWebKit) {
+        if (isWebKit) {
           console.log("🍎 WebKit Font Application Summary:", {
             attemptedFont: fontSettings.font,
             actualFont: ctx.font,
@@ -541,7 +513,7 @@ self.onmessage = async function(e) {
           error: e.message,
           attemptedFont: fontSettings.font,
           fontSettings: fontSettings,
-          isWebKit: platformInfo ? platformInfo.isWebKit : 'undefined',
+          isWebKit,
           fontsRegistered
         });
 
@@ -562,7 +534,7 @@ self.onmessage = async function(e) {
           timeText: timeText,
           textWidth: finalMetrics.width.toFixed(1) + 'px',
           fontsRegistered: fontsRegistered,
-          fontBufferAvailable: !!fontBuffer
+          fontBufferAvailable: !!actualFontBuffer
         });
       }
 

@@ -36,7 +36,7 @@ import { VideoEncoder, type EncodingOptions } from "~/services/VideoEncoder";
 import { TimerTrimmerService } from "~/services/TimerTrimmerService";
 
 // Mediabunny imports for fallback encoding strategy
-import Mediabunny from "mediabunny";
+import * as Mediabunny from "mediabunny";
 import { MemoryMonitor } from "~/lib/memory-monitor";
 
 // Create timer options for wheel picker
@@ -255,66 +255,64 @@ export function ClientTimerGenerator() {
         setFontLoaded(true);
         console.log("✅ HeadingNow font buffer data ready for Web Worker transfer!");
 
-        // iOS: Use pre-generated static fonts for proper width control
-        if (platformInfo.isIOS) {
-          console.log("🍎 iOS Device Detected - Using pre-generated static fonts for Web Worker compatibility...");
+        // Load pre-generated static fonts for all platforms to ensure consistent rendering
+        console.log("🔤 Loading pre-generated static fonts for Web Worker compatibility...");
 
-          try {
-            // Load pre-generated static fonts
-            const fontPromises = [
-              fetch('/fonts/generated/HeadingNowCondensed.ttf'),
-              fetch('/fonts/generated/HeadingNowNormal.ttf'),
-              fetch('/fonts/generated/HeadingNowExtended.ttf')
-            ];
+        try {
+          // Load pre-generated static fonts
+          const fontPromises = [
+            fetch('/fonts/generated/HeadingNowCondensed.ttf'),
+            fetch('/fonts/generated/HeadingNowNormal.ttf'),
+            fetch('/fonts/generated/HeadingNowExtended.ttf')
+          ];
 
-            const fontResponses = await Promise.all(fontPromises);
+          const fontResponses = await Promise.all(fontPromises);
 
-            // Convert to ArrayBuffers
-            const [condensedResponse, normalResponse, extendedResponse] = fontResponses;
+          // Convert to ArrayBuffers
+          const [condensedResponse, normalResponse, extendedResponse] = fontResponses;
 
-            if (!condensedResponse.ok || !normalResponse.ok || !extendedResponse.ok) {
-              throw new Error('Failed to fetch pre-generated fonts');
-            }
-
-            const [
-              condensedBuffer,
-              normalBuffer,
-              extendedBuffer
-            ] = await Promise.all([
-              condensedResponse.arrayBuffer(),
-              normalResponse.arrayBuffer(),
-              extendedResponse.arrayBuffer()
-            ]);
-
-            console.log("🍎 iOS: Loaded pre-generated fonts:", {
-              condensed: `${(condensedBuffer.byteLength / 1024).toFixed(1)} KB`,
-              normal: `${(normalBuffer.byteLength / 1024).toFixed(1)} KB`,
-              extended: `${(extendedBuffer.byteLength / 1024).toFixed(1)} KB`
-            });
-
-            // Store generated fonts for Web Worker transfer
-            setGeneratedFonts({
-              condensed: condensedBuffer,
-              normal: normalBuffer,
-              extended: extendedBuffer
-            });
-
-            console.log("✅ iOS: Pre-generated static fonts loaded for Web Worker access");
-          } catch (fontError) {
-            console.warn("⚠️ iOS: Pre-generated font loading failed:", fontError);
-            console.log("🔄 iOS: Falling back to original font buffer for Web Worker...");
+          if (!condensedResponse.ok || !normalResponse.ok || !extendedResponse.ok) {
+            throw new Error('Failed to fetch pre-generated fonts');
           }
 
-          console.log("🍎 iOS Device Detected - Font Loading Summary:", {
-            fontLoaded: true,
-            bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
-            isWebKit: platformInfo.isWebKit,
-            isSafari: platformInfo.isSafari,
-            readyForWebWorker: true,
-            fontsRegisteredInMainThread: true,
-            webWorkerShouldUseMainThreadFonts: true
+          const [
+            condensedBuffer,
+            normalBuffer,
+            extendedBuffer
+          ] = await Promise.all([
+            condensedResponse.arrayBuffer(),
+            normalResponse.arrayBuffer(),
+            extendedResponse.arrayBuffer()
+          ]);
+
+          console.log("🔤 Loaded pre-generated fonts:", {
+            condensed: `${(condensedBuffer.byteLength / 1024).toFixed(1)} KB`,
+            normal: `${(normalBuffer.byteLength / 1024).toFixed(1)} KB`,
+            extended: `${(extendedBuffer.byteLength / 1024).toFixed(1)} KB`
           });
+
+          // Store generated fonts for Web Worker transfer
+          setGeneratedFonts({
+            condensed: condensedBuffer,
+            normal: normalBuffer,
+            extended: extendedBuffer
+          });
+
+          console.log("✅ Pre-generated static fonts loaded for Web Worker access");
+        } catch (fontError) {
+          console.warn("⚠️ Pre-generated font loading failed:", fontError);
+          console.log("🔄 Falling back to original font buffer for Web Worker...");
         }
+
+        console.log("🔤 Font Loading Summary:", {
+          fontLoaded: true,
+          bufferSize: `${(fontBufferData.byteLength / 1024).toFixed(1)} KB`,
+          isWebKit: platformInfo.isWebKit,
+          isSafari: platformInfo.isSafari,
+          readyForWebWorker: true,
+          fontsRegisteredInMainThread: true,
+          webWorkerShouldUseMainThreadFonts: true
+        });
 
         // Original iOS code (commented out for testing):
         // iOS: Use pre-generated static fonts for proper width control

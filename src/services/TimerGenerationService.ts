@@ -39,6 +39,7 @@ export interface WorkerMessage {
   preRenderedTexts?: ImageData[];
   workerId: number;
   fontBuffer?: ArrayBuffer;
+  fontLoaded?: boolean;
   isIOS?: boolean;
   debugMode?: boolean;
   platformInfo?: Record<string, unknown>;
@@ -96,7 +97,7 @@ export class TimerGenerationService {
     this.debugLog(`🏭 Using optimized frame generation for ${totalSeconds}s`);
 
     // Use optimized frame generation approach
-    return this.generateTimerWithFrames(totalSeconds, onProgress, options);
+    return this.generateTimerWithFrames(totalSeconds, onProgress);
   }
 
   /**
@@ -210,8 +211,7 @@ export class TimerGenerationService {
    */
   private async generateTimerWithTrimming(
     totalSeconds: number,
-    onProgress: (progress: number) => void,
-    options: TimerGenerationOptions
+    onProgress: (progress: number) => void
   ): Promise<GenerationResult> {
     const startTime = performance.now();
 
@@ -256,7 +256,7 @@ export class TimerGenerationService {
 
       // Fallback to frame generation if trimming fails
       this.debugLog(`🏭 Falling back to frame generation for ${totalSeconds}s`);
-      return this.generateTimerWithFrames(totalSeconds, onProgress, options);
+      return this.generateTimerWithFrames(totalSeconds, onProgress);
     }
   }
 
@@ -265,8 +265,7 @@ export class TimerGenerationService {
    */
   private async generateTimerWithFrames(
     totalSeconds: number,
-    onProgress: (progress: number) => void,
-    options: TimerGenerationOptions
+    onProgress: (progress: number) => void
   ): Promise<GenerationResult> {
     this.debugLog(`🏭 Starting frame generation: ${totalSeconds}s`);
 
@@ -290,44 +289,44 @@ export class TimerGenerationService {
 
     if (shouldUseChunkedGeneration) {
       this.debugLog(`🧠 Using chunked generation for ${totalFrames} frames (>${CHUNK_SIZE_THRESHOLD})`);
-      return this.generateTimerWithChunkedFrames(totalSeconds, onProgress, startTime, totalFrames, options);
+      return this.generateTimerWithChunkedFrames(totalSeconds, onProgress, startTime, totalFrames);
     }
 
     this.debugLog("👷 Creating Web Worker for frame generation...");
 
+    // Load font buffer for worker before creating worker
+    let fontBufferForTransfer: ArrayBuffer | null = null;
+    try {
+      this.debugLog("🔤 Loading font buffer for worker...");
+      const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+      if (!fontResponse.ok) {
+        throw new Error(`Font fetch failed: ${fontResponse.status}`);
+      }
+      const fontBufferData = await fontResponse.arrayBuffer();
+      fontBufferForTransfer = fontBufferData.slice(0); // Create fresh copy for transfer
+      this.debugLog(`✅ Font buffer loaded: ${(fontBufferForTransfer.byteLength / 1024).toFixed(1)} KB`);
+    } catch (fontError) {
+      this.debugLog("⚠️ Failed to load font buffer, worker will use fallback fonts:", fontError);
+      fontBufferForTransfer = null;
+    }
+
     // Create Web Worker for frame generation
-    // CRITICAL FIX: Add cache busting parameter to force worker reload with font fixes
-    const worker = new Worker(`/timer-worker.js?v=${Date.now()}`);
+    const worker = new Worker("/timer-worker.js");
 
     try {
-      // CRITICAL FIX: Send message to worker with font data (handle ArrayBuffer transfer safely)
-      const platformInfo = this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>;
-
-      // Create fresh copy of font buffer for transfer to avoid "already detached" error
-      let fontBufferForTransfer: ArrayBuffer | null = null;
-      if (options.fontBufferData) {
-        fontBufferForTransfer = options.fontBufferData.slice(0); // Create fresh copy
-      }
-
+      // Send message to worker
       const message: WorkerMessage = {
         action: 'generate',
         timerSeconds: totalSeconds,
         workerId,
         debugMode: this.debugMode,
-        platformInfo,
-        // Include font data to solve WebWorker font loading issues
-        fontBufferData: fontBufferForTransfer || undefined,
-        generatedFonts: options.generatedFonts?.condensed && options.generatedFonts.normal && options.generatedFonts.extended ? {
-          condensed: options.generatedFonts.condensed,
-          normal: options.generatedFonts.normal,
-          extended: options.generatedFonts.extended,
-        } : undefined,
-        preRenderedTexts: options.preRenderedTexts,
-        isIOS: platformInfo.isIOS as boolean,
+        platformInfo: this.platformAdapter.getPlatformInfo() as unknown as Record<string, unknown>,
+        fontBuffer: fontBufferForTransfer, // Add font buffer to message
+        fontLoaded: !!fontBufferForTransfer,
       };
 
-      // Send message with proper font transfer (use fresh copy)
-      await this.sendMessageToWorker(worker, message, fontBufferForTransfer, platformInfo.isIOS as boolean, options.preRenderedTexts);
+      // Send message with font data
+      await this.sendMessageToWorker(worker, message, fontBufferForTransfer, false);
 
       // Handle worker response
       const result = await this.handleWorkerResponse(worker, startTime, onProgress);
@@ -352,14 +351,39 @@ export class TimerGenerationService {
     totalSeconds: number,
     onProgress: (progress: number) => void,
     startTime: number,
-    totalFrames: number,
-    options: TimerGenerationOptions
+    totalFrames: number
   ): Promise<GenerationResult> {
     this.debugLog(`🧩 Starting adaptive chunked frame generation: ${totalSeconds}s (${totalFrames} frames)`);
 
+    // Load HeadingNow font for main thread rendering
+    let fontLoaded = false;
+    try {
+      this.debugLog("🔤 Loading HeadingNow font for main thread chunked generation...");
+      const fontResponse = await fetch("/fonts/HeadingNowVariable-Regular.ttf");
+      if (fontResponse.ok) {
+        const fontBufferData = await fontResponse.arrayBuffer();
+        const fontFace = new FontFace('HeadingNowVariable', fontBufferData);
+        await fontFace.load();
+        document.fonts.add(fontFace);
+        fontLoaded = true;
+        this.debugLog(`✅ HeadingNow font loaded successfully: ${(fontBufferData.byteLength / 1024).toFixed(1)} KB`);
+      } else {
+        throw new Error(`Font fetch failed: ${fontResponse.status}`);
+      }
+    } catch (fontError) {
+      this.debugLog("⚠️ Failed to load HeadingNow font, will use fallback Arial fonts:", fontError);
+      fontLoaded = false;
+    }
+
     // Constants matching WebWorker
     const CANVAS_SIZE = 512;
+    const FONT_BASE_SIZE = 670;
+    const FONT_WEIGHT_HEAVY = '1000';
+    const FONT_WIDTH_ULTRA_CONDENSED = '1000'; // For 0-9 seconds
+    const FONT_WIDTH_CONDENSED = '410'; // For 10-59 seconds
+    const FONT_WIDTH_EXTENDED = '170'; // For MM:SS format
     const SINGLE_DIGIT_MAX = 9; // 0-9 seconds
+    const TWO_DIGIT_MIN = 10; // 10-59 seconds
     const MM_SS_THRESHOLD = 60; // 60+ seconds
 
     // Adaptive chunk size calculation based on memory and duration
@@ -382,33 +406,65 @@ export class TimerGenerationService {
 
     const getFontSettings = (remainingSeconds: number) => {
       // Use maximum font size for all states
-      const baseSize = CANVAS_SIZE; // Maximum size for all formats (full canvas height)
+      const baseSize = FONT_BASE_SIZE;
 
-      // CRITICAL FIX: Use proper custom fonts instead of Arial fallback
-      let fontName: string;
-      let fontVariation: string;
+      let fontSettings: {
+        font: string;
+        name: string;
+        baseSize: number;
+        variations?: string | null;
+      };
 
-      if (remainingSeconds <= SINGLE_DIGIT_MAX) {
-        // State 1: 0-9s - condensed width for single digits
-        fontName = options.generatedFonts?.condensed ? 'HeadingNowCondensed' : 'HeadingNowVariable';
-        fontVariation = '"wght" 1000, "wdth" 1000'; // Heavy weight, ultra-condensed
-      } else if (remainingSeconds < MM_SS_THRESHOLD) {
-        // State 2: 10-59s - normal width for two digits
-        fontName = options.generatedFonts?.normal ? 'HeadingNowNormal' : 'HeadingNowVariable';
-        fontVariation = '"wght" 1000, "wdth" 410'; // Heavy weight, condensed
+      if (fontLoaded) {
+        // Use HeadingNow Variable font with exact WebWorker logic
+        let fontName = 'HeadingNowVariable';
+        let variations: string | null = null;
+
+        if (remainingSeconds <= SINGLE_DIGIT_MAX) {
+          // State 1: Ultra-condensed for 0-9s (single digit)
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_ULTRA_CONDENSED}`;
+          fontName = 'HeadingNowVariable (Ultra-Condensed)';
+        } else if (remainingSeconds < MM_SS_THRESHOLD) {
+          // State 2: Condensed for 10-59s (two digits)
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_CONDENSED}`;
+          fontName = 'HeadingNowVariable (Condensed)';
+        } else {
+          // State 3: Extended for MM:SS format (60+ seconds)
+          variations = `'wght' ${FONT_WEIGHT_HEAVY}, 'wdth' ${FONT_WIDTH_EXTENDED}`;
+          fontName = 'HeadingNowVariable (Extended)';
+        }
+
+        fontSettings = {
+          font: `${FONT_WEIGHT_HEAVY} ${baseSize}px ${'HeadingNowVariable'}`,
+          variations,
+          name: fontName,
+          baseSize
+        };
+
+        this.debugLog(`✅ HeadingNow font: ${fontName} (${remainingSeconds}s), format: ${remainingSeconds <= SINGLE_DIGIT_MAX ? 'Single digit' : remainingSeconds < MM_SS_THRESHOLD ? 'Two digits' : 'MM:SS'}`);
       } else {
-        // State 3: >=60s (MM:SS format) - extended width for MM:SS
-        fontName = options.generatedFonts?.extended ? 'HeadingNowExtended' : 'HeadingNowVariable';
-        fontVariation = '"wght" 1000, "wdth" 170'; // Heavy weight, extended
+        // Fallback to Arial fonts if HeadingNow not loaded - match WebWorker logic
+        let fontName: string;
+
+        if (remainingSeconds <= SINGLE_DIGIT_MAX) {
+          fontName = 'Arial Black'; // Single digit - match WebWorker HeadingNowCondensed fallback
+        } else if (remainingSeconds < MM_SS_THRESHOLD) {
+          fontName = 'Arial'; // Two digits - match WebWorker HeadingNowNormal fallback
+        } else {
+          fontName = 'Arial'; // MM:SS format - match WebWorker HeadingNowExtended fallback
+        }
+
+        fontSettings = {
+          font: `bold ${baseSize}px ${fontName}`,
+          variations: null,
+          name: fontName,
+          baseSize
+        };
+
+        this.debugLog(`⚠️ Fallback font: ${fontName} (${remainingSeconds}s), format: ${remainingSeconds <= SINGLE_DIGIT_MAX ? 'Single digit' : remainingSeconds < MM_SS_THRESHOLD ? 'Two digits' : 'MM:SS'} (HeadingNow not loaded)`);
       }
 
-      return {
-        font: `${baseSize}px ${fontName}`,
-        name: fontName,
-        baseSize,
-        fontVariation,
-        hasCustomFonts: !!(options.fontBufferData || options.generatedFonts)
-      };
+      return fontSettings;
     };
 
     try {
@@ -456,6 +512,12 @@ export class TimerGenerationService {
           // Get dynamic font settings based on remaining time
           const fontSettings = getFontSettings(remainingSeconds);
           ctx.font = fontSettings.font;
+
+          // Apply font variation settings for HeadingNow Variable font
+          if (fontLoaded && fontSettings.variations && ctx.fontVariationSettings !== undefined) {
+            ctx.fontVariationSettings = fontSettings.variations;
+            this.debugLog(`🔧 Applied font variations: ${fontSettings.variations}`);
+          }
 
           // Format time based on remaining seconds
           const timeText = formatTime(remainingSeconds);
