@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "pnpm build:prod",
-  "devCommand": "pnpm dev",
-  "installCommand": "bun install --no-frozen-lockfile",
+  "buildCommand": "bun run build:prod",
+  "devCommand": "bun run dev",
+  "installCommand": "bun install",
   "framework": "nextjs",
   "functions": {
     "src/app/api/bot/route.ts": {
